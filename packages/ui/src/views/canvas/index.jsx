@@ -554,16 +554,22 @@ const Canvas = () => {
     }, [healthStatus])
 
     // Throttled cursor movement handler with adaptive throttling
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const throttledSendCursor = useCallback(
-        throttle((x, y) => {
+    // Store throttled function in a ref and recreate it when health status changes
+    const throttledSendCursorRef = useRef(null)
+    
+    useEffect(() => {
+        throttledSendCursorRef.current = throttle((x, y) => {
             if (isCollaborativeMode && hasJoined) {
                 sendCursorMove(x, y)
             }
-        }, getThrottleDelay()),
-        // eslint-disable-next-line
-        [isCollaborativeMode, hasJoined, sendCursorMove, getThrottleDelay]
-    )
+        }, getThrottleDelay())
+    }, [healthStatus, isCollaborativeMode, hasJoined, sendCursorMove, getThrottleDelay])
+
+    const throttledSendCursor = useCallback((x, y) => {
+        if (throttledSendCursorRef.current) {
+            throttledSendCursorRef.current(x, y)
+        }
+    }, [])
 
     // Track cursor movement on canvas
     useEffect(() => {
