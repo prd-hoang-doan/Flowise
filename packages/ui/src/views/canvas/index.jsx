@@ -558,18 +558,31 @@ const Canvas = () => {
     const throttledSendCursorRef = useRef(null)
     
     useEffect(() => {
+        // Cancel previous throttled function to prevent memory leaks
+        if (throttledSendCursorRef.current?.cancel) {
+            throttledSendCursorRef.current.cancel()
+        }
+
+        // Create new throttled function with current health-based delay
+        // The actual conditions are checked in the wrapper function below
         throttledSendCursorRef.current = throttle((x, y) => {
-            if (isCollaborativeMode && hasJoined) {
-                sendCursorMove(x, y)
-            }
+            sendCursorMove(x, y)
         }, getThrottleDelay())
-    }, [healthStatus, isCollaborativeMode, hasJoined, sendCursorMove, getThrottleDelay])
+
+        // Cleanup on unmount
+        return () => {
+            if (throttledSendCursorRef.current?.cancel) {
+                throttledSendCursorRef.current.cancel()
+            }
+        }
+    }, [getThrottleDelay, sendCursorMove]) // Recreate when health status or sendCursorMove changes
 
     const throttledSendCursor = useCallback((x, y) => {
-        if (throttledSendCursorRef.current) {
+        // Check conditions before calling throttled function to avoid stale closures
+        if (isCollaborativeMode && hasJoined && throttledSendCursorRef.current) {
             throttledSendCursorRef.current(x, y)
         }
-    }, [])
+    }, [isCollaborativeMode, hasJoined])
 
     // Track cursor movement on canvas
     useEffect(() => {
