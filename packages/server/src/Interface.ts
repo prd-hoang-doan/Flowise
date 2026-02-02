@@ -105,6 +105,23 @@ export interface IChatMessageFeedback {
     createdDate: Date
 }
 
+export interface IConversation {
+    id: string
+    title: string
+    chatflowId: string
+    chatId: string
+    workspaceId: string
+    userId?: string
+    isPublic: boolean
+    shareToken?: string
+    sharePassword?: string
+    shareExpiresAt?: Date
+    lastMessageAt?: Date
+    messageCount: number
+    createdDate: Date
+    updatedDate: Date
+}
+
 export interface ITool {
     id: string
     name: string
