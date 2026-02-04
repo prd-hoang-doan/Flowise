@@ -67,6 +67,15 @@ const dashboard = {
             type: 'group',
             children: [
                 {
+                    id: 'chatbot',
+                    title: 'Chatbot',
+                    type: 'item',
+                    url: '/chatbot',
+                    icon: icons.IconRobot,
+                    breadcrumbs: true,
+                    permission: 'chatflows:view'
+                },
+                {
                     id: 'chatflows',
                     title: 'Chatflows',
                     type: 'item',
