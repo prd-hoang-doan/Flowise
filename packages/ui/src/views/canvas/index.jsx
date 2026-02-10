@@ -32,6 +32,7 @@ import ChatPopUp from '@/views/chatmessage/ChatPopUp'
 import VectorStorePopUp from '@/views/vectorstore/VectorStorePopUp'
 import { flowContext } from '@/store/context/ReactFlowContext'
 import { CanvasPresenceProvider } from '@/contexts/CanvasPresenceContext'
+import { ChatflowCrdtProvider } from '@/contexts/ChatflowCrdtContext'
 import { useNodePresenceSync } from '@/hooks/useNodePresenceSync'
 import { CanvasPresenceContext } from '@/contexts/CanvasPresenceContext'
 
@@ -45,6 +46,7 @@ import useConfirm from '@/hooks/useConfirm'
 import { useAuth } from '@/hooks/useAuth'
 import { useCollaboration } from '@/hooks/useCollaboration'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useChatflowCrdtContext, isCrdtEnabled } from '@/contexts/ChatflowCrdtContext'
 
 // icons
 import { IconX, IconRefreshAlert, IconMagnetFilled, IconMagnetOff, IconArtboard, IconArtboardOff } from '@tabler/icons-react'
@@ -91,6 +93,10 @@ const Canvas = () => {
     const { hasJoined, sessionId, activeUsers, joinChatflow, leaveChatflow, sendNodePresence } = useContext(CanvasPresenceContext)
     const { healthStatus } = useWebSocketContext()
 
+    // CRDT integration (conditionally use CRDT state if enabled)
+    const crdtEnabled = isCrdtEnabled()
+    const crdtContext = crdtEnabled ? useChatflowCrdtContext() : null
+
     // Sync node presence with WebSocket
     useNodePresenceSync(chatflowId, sessionId)
 
@@ -108,10 +114,14 @@ const Canvas = () => {
     const enqueueSnackbar = (...args) => dispatch(enqueueSnackbarAction(...args))
     const closeSnackbar = (...args) => dispatch(closeSnackbarAction(...args))
 
+    // ==============================|| CRDT ||============================== //
+    const crdtNodes = crdtEnabled && crdtContext?.isInitialized ? crdtContext.nodes : []
+    const crdtEdges = crdtEnabled && crdtContext?.isInitialized ? crdtContext.edges : []
+
     // ==============================|| ReactFlow ||============================== //
 
-    const [nodes, setNodes, onNodesChange] = useNodesState()
-    const [edges, setEdges, onEdgesChange] = useEdgesState()
+    const [nodes, setNodes, onNodesChange] = useNodesState(crdtNodes)
+    const [edges, setEdges, onEdgesChange] = useEdgesState(crdtEdges)
 
     const [selectedNode, setSelectedNode] = useState(null)
     const [isUpsertButtonEnabled, setIsUpsertButtonEnabled] = useState(false)
@@ -228,6 +238,7 @@ const Canvas = () => {
     // ==============================|| Events & Actions ||============================== //
 
     const onConnect = (params) => {
+        console.log(params)
         const newEdge = {
             ...params,
             type: 'buttonedge',
@@ -238,18 +249,21 @@ const Canvas = () => {
         const sourceNodeId = params.sourceHandle.split('-')[0]
         const targetInput = params.targetHandle.split('-')[2]
 
-        setNodes((nds) =>
-            nds.map((node) => {
-                if (node.id === targetNodeId) {
+        if (crdtEnabled && crdtContext?.isInitialized) {
+            // CRDT mode: use transactions for atomic updates
+            crdtContext.transact(() => {
+                // Find target node
+                const targetNode = nodes.find((node) => node.id === targetNodeId)
+                if (targetNode) {
                     if (!isCollaborativeMode) {
                         setTimeout(() => setDirty(), 0)
                     }
                     let value
-                    const inputAnchor = node.data.inputAnchors.find((ancr) => ancr.name === targetInput)
-                    const inputParam = node.data.inputParams.find((param) => param.name === targetInput)
+                    const inputAnchor = targetNode.data.inputAnchors.find((ancr) => ancr.name === targetInput)
+                    const inputParam = targetNode.data.inputParams.find((param) => param.name === targetInput)
 
                     if (inputAnchor && inputAnchor.list) {
-                        const newValues = node.data.inputs[targetInput] || []
+                        const newValues = targetNode.data.inputs[targetInput] || []
                         if (targetInput === 'tools') {
                             rearrangeToolsOrdering(newValues, sourceNodeId)
                         } else {
@@ -257,67 +271,178 @@ const Canvas = () => {
                         }
                         value = newValues
                     } else if (inputParam && inputParam.acceptVariable) {
-                        value = node.data.inputs[targetInput] || ''
+                        value = targetNode.data.inputs[targetInput] || ''
                     } else {
                         value = `{{${sourceNodeId}.data.instance}}`
                     }
-                    node.data = {
-                        ...node.data,
-                        inputs: {
-                            ...node.data.inputs,
-                            [targetInput]: value
+
+                    // Update node inputs
+                    crdtContext.updateNode(targetNodeId, {
+                        data: {
+                            ...targetNode.data,
+                            inputs: {
+                                ...targetNode.data.inputs,
+                                [targetInput]: value
+                            }
+                        }
+                    })
+                }
+
+                // Add edge
+                crdtContext.addEdge(newEdge)
+            })
+        } else {
+            // Legacy mode
+            setLocalNodes((nds) =>
+                nds.map((node) => {
+                    if (node.id === targetNodeId) {
+                        if (!isCollaborativeMode) {
+                            setTimeout(() => setDirty(), 0)
+                        }
+                        let value
+                        const inputAnchor = node.data.inputAnchors.find((ancr) => ancr.name === targetInput)
+                        const inputParam = node.data.inputParams.find((param) => param.name === targetInput)
+
+                        if (inputAnchor && inputAnchor.list) {
+                            const newValues = node.data.inputs[targetInput] || []
+                            if (targetInput === 'tools') {
+                                rearrangeToolsOrdering(newValues, sourceNodeId)
+                            } else {
+                                newValues.push(`{{${sourceNodeId}.data.instance}}`)
+                            }
+                            value = newValues
+                        } else if (inputParam && inputParam.acceptVariable) {
+                            value = node.data.inputs[targetInput] || ''
+                        } else {
+                            value = `{{${sourceNodeId}.data.instance}}`
+                        }
+                        node.data = {
+                            ...node.data,
+                            inputs: {
+                                ...node.data.inputs,
+                                [targetInput]: value
+                            }
                         }
                     }
-                }
-                return node
-            })
-        )
+                    return node
+                })
+            )
 
-        setEdges((eds) => addEdge(newEdge, eds))
-        pendingEdgeChanges.current.push({ id: newEdge.id, type: 'add', edge: newEdge })
-        debouncedSendChanges()
+            setLocalEdges((eds) => addEdge(newEdge, eds))
+            pendingEdgeChanges.current.push({ id: newEdge.id, type: 'add', edge: newEdge })
+            debouncedSendChanges()
+        }
     }
 
     const handleNodesChange = (changes) => {
-        onNodesChange(changes)
-        // Track changes that should be sent to other users
-        changes.forEach((change) => {
-            if (['position', 'dimensions', 'select'].includes(change.type) && change.dragging === false) {
-                // Only track completed changes (not during drag)
-                const existingIndex = pendingNodeChanges.current.findIndex((c) => c.id === change.id)
-                if (existingIndex >= 0) {
-                    pendingNodeChanges.current[existingIndex] = change
-                } else {
-                    pendingNodeChanges.current.push(change)
+        console.log('Node changes:', changes)
+        console.log('crdt', crdtContext, crdtEnabled)
+        if (crdtEnabled && crdtContext?.isInitialized) {
+            // Use CRDT operations via transaction for batching
+            console.log('Applying node changes via CRDT transaction')
+            console.log('Current nodes before transaction:', crdtContext.nodes)
+            crdtContext.transact(() => {
+                changes.forEach((change) => {
+                    switch (change.type) {
+                        case 'position':
+                            if (change.dragging === false && change.position) {
+                                // Only update on drag end to reduce updates
+                                crdtContext.updateNode(change.id, {
+                                    position: {
+                                        x: change.position.x,
+                                        y: change.position.y
+                                    }
+                                })
+                            }
+                            break
+                        case 'dimensions':
+                            if (change.dimensions) {
+                                crdtContext.updateNode(change.id, {
+                                    width: change.dimensions.width,
+                                    height: change.dimensions.height
+                                })
+                            }
+                            break
+                        case 'remove':
+                            crdtContext.removeNode(change.id)
+                            break
+                        case 'select':
+                            // Selection is not synced via CRDT
+                            break
+                        default:
+                            // Other change types handled by React Flow
+                            break
+                    }
+                })
+            })
+        } else {
+            // Legacy mode
+            onNodesChange(changes)
+            // Track changes that should be sent to other users
+            changes.forEach((change) => {
+                if (['position', 'dimensions', 'select'].includes(change.type) && change.dragging === false) {
+                    // Only track completed changes (not during drag)
+                    const existingIndex = pendingNodeChanges.current.findIndex((c) => c.id === change.id)
+                    if (existingIndex >= 0) {
+                        pendingNodeChanges.current[existingIndex] = change
+                    } else {
+                        pendingNodeChanges.current.push(change)
+                    }
+                    debouncedSendChanges()
                 }
-                debouncedSendChanges()
-            }
-        })
+            })
+        }
     }
 
     const handleEdgesChange = (changes) => {
-        onEdgesChange(changes)
-        // Track changes that should be sent to other users
-        changes.forEach((change) => {
-            if (['reset'].includes(change.type)) {
-                const existingIndex = pendingEdgeChanges.current.findIndex((c) => c.id === change.id)
-                if (existingIndex >= 0) {
-                    pendingEdgeChanges.current[existingIndex] = change.item
-                } else {
-                    pendingEdgeChanges.current.push(change.item)
+        if (crdtEnabled && crdtContext?.isInitialized) {
+            // Use CRDT operations
+            crdtContext.transact(() => {
+                changes.forEach((change) => {
+                    if (change.type === 'remove') {
+                        crdtContext.removeEdge(change.id)
+                    }
+                })
+            })
+        } else {
+            // Legacy mode
+            onEdgesChange(changes)
+            // Track changes that should be sent to other users
+            changes.forEach((change) => {
+                if (['reset'].includes(change.type)) {
+                    const existingIndex = pendingEdgeChanges.current.findIndex((c) => c.id === change.id)
+                    if (existingIndex >= 0) {
+                        pendingEdgeChanges.current[existingIndex] = change.item
+                    } else {
+                        pendingEdgeChanges.current.push(change.item)
+                    }
+                    debouncedSendChanges()
                 }
-                debouncedSendChanges()
-            }
-        })
+            })
+        }
     }
 
     const handleLoadFlow = (file) => {
         try {
             const flowData = JSON.parse(file)
             const nodes = flowData.nodes || []
+            const edges = flowData.edges || []
 
-            setNodes(nodes)
-            setEdges(flowData.edges || [])
+            if (crdtEnabled && crdtContext?.isInitialized) {
+                // CRDT mode: use transact to batch all operations
+                crdtContext.transact(() => {
+                    // Clear existing nodes and edges
+                    crdtContext.nodes.forEach((node) => crdtContext.removeNode(node.id))
+                    crdtContext.edges.forEach((edge) => crdtContext.removeEdge(edge.id))
+                    // Add new nodes and edges
+                    nodes.forEach((node) => crdtContext.addNode(node))
+                    edges.forEach((edge) => crdtContext.addEdge(edge))
+                })
+            } else {
+                // Legacy mode
+                setLocalNodes(nodes)
+                setLocalEdges(edges)
+            }
             setTimeout(() => setDirty(), 0)
         } catch (e) {
             console.error(e)
@@ -395,23 +520,48 @@ const Canvas = () => {
     // eslint-disable-next-line
     const onNodeClick = useCallback((event, clickedNode) => {
         setSelectedNode(clickedNode)
-        setNodes((nds) =>
-            nds.map((node) => {
-                if (node.id === clickedNode.id) {
-                    node.data = {
-                        ...node.data,
-                        selected: true
-                    }
-                } else {
-                    node.data = {
-                        ...node.data,
-                        selected: false
-                    }
-                }
 
-                return node
+        if (crdtEnabled && crdtContext?.isInitialized) {
+            // CRDT mode: update selection state (Note: selection is local only, not synced)
+            crdtContext.transact(() => {
+                nodes.forEach((node) => {
+                    if (node.id === clickedNode.id) {
+                        crdtContext.updateNode(node.id, {
+                            data: {
+                                ...node.data,
+                                selected: true
+                            }
+                        })
+                    } else if (node.data.selected) {
+                        crdtContext.updateNode(node.id, {
+                            data: {
+                                ...node.data,
+                                selected: false
+                            }
+                        })
+                    }
+                })
             })
-        )
+        } else {
+            // Legacy mode
+            setLocalNodes((nds) =>
+                nds.map((node) => {
+                    if (node.id === clickedNode.id) {
+                        node.data = {
+                            ...node.data,
+                            selected: true
+                        }
+                    } else {
+                        node.data = {
+                            ...node.data,
+                            selected: false
+                        }
+                    }
+
+                    return node
+                })
+            )
+        }
     })
 
     const onDragOver = useCallback((event) => {
@@ -447,32 +597,59 @@ const Canvas = () => {
             }
 
             setSelectedNode(newNode)
-            setNodes((nds) =>
-                nds.concat(newNode).map((node) => {
-                    if (node.id === newNode.id) {
-                        node.data = {
-                            ...node.data,
+
+            if (crdtEnabled && crdtContext?.isInitialized) {
+                // CRDT mode: add node with selection state
+                crdtContext.transact(() => {
+                    // Deselect all nodes first
+                    nodes.forEach((node) => {
+                        if (node.data.selected) {
+                            crdtContext.updateNode(node.id, {
+                                data: {
+                                    ...node.data,
+                                    selected: false
+                                }
+                            })
+                        }
+                    })
+                    // Add new node with selected state
+                    crdtContext.addNode({
+                        ...newNode,
+                        data: {
+                            ...newNode.data,
                             selected: true
                         }
-                    } else {
-                        node.data = {
-                            ...node.data,
-                            selected: false
-                        }
-                    }
-
-                    return node
+                    })
                 })
-            )
+            } else {
+                // Legacy mode
+                setLocalNodes((nds) =>
+                    nds.concat(newNode).map((node) => {
+                        if (node.id === newNode.id) {
+                            node.data = {
+                                ...node.data,
+                                selected: true
+                            }
+                        } else {
+                            node.data = {
+                                ...node.data,
+                                selected: false
+                            }
+                        }
+
+                        return node
+                    })
+                )
+                pendingNodeChanges.current.push({
+                    id: newNode.id,
+                    type: 'add',
+                    node: { ...newNode, absolutePosition: position, width: 300 }
+                })
+                debouncedSendChanges()
+            }
             if (!isCollaborativeMode) {
                 setTimeout(() => setDirty(), 0)
             }
-            pendingNodeChanges.current.push({
-                id: newNode.id,
-                type: 'add',
-                node: { ...newNode, absolutePosition: position, width: 300 }
-            })
-            debouncedSendChanges()
         },
 
         // eslint-disable-next-line
@@ -919,11 +1096,31 @@ const Canvas = () => {
     )
 }
 
-// Wrap Canvas with NodePresenceProvider
-const CanvasWithPresence = () => (
-    <CanvasPresenceProvider>
-        <Canvas />
-    </CanvasPresenceProvider>
-)
+// Wrap Canvas with NodePresenceProvider and optionally ChatflowCrdtProvider
+const CanvasWithPresence = () => {
+    const URLpath = document.location.pathname.toString().split('/')
+    const chatflowId =
+        URLpath[URLpath.length - 1] === 'canvas' || URLpath[URLpath.length - 1] === 'agentcanvas' ? '' : URLpath[URLpath.length - 1]
+
+    // Conditionally wrap with CRDT provider if enabled and chatflowId exists
+    const crdtEnabled = isCrdtEnabled()
+    console.log('CRDT Enabled:', crdtEnabled, 'Chatflow ID:', chatflowId)
+
+    if (crdtEnabled && chatflowId) {
+        return (
+            <CanvasPresenceProvider>
+                <ChatflowCrdtProvider chatflowId={chatflowId} protocolVersion='crdt-1.0'>
+                    <Canvas />
+                </ChatflowCrdtProvider>
+            </CanvasPresenceProvider>
+        )
+    }
+
+    return (
+        <CanvasPresenceProvider>
+            <Canvas />
+        </CanvasPresenceProvider>
+    )
+}
 
 export default CanvasWithPresence

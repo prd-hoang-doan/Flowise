@@ -2,20 +2,26 @@ import { DataSource } from 'typeorm'
 
 import { WSRoomManager } from '../../websocket/wsRoomManager'
 import { ChatFlowEventService } from './chat-flow-event.service'
+import { ChatFlowCrdtService } from './chat-flow-crdt.service'
 import { ChatFlow } from '../../../database/entities/ChatFlow'
 import chatflowsService from '../../../services/chatflows'
 import { getRunningExpressApp } from '../../../utils/getRunningExpressApp'
 import { UsageCacheManager } from '../../../UsageCacheManager'
 import { LoggedInUser } from '../../Interface.Enterprise'
 import { AuthenticatedWebSocket } from '../../websocket/types'
+import { encodeUpdate, decodeUpdate } from '../../utils/crdtUtils'
 import {
     ICursorMovedEvent,
     IEdgeUpdatedEvent,
     IJoinChatFlowEvent,
     ILeaveChatFlowEvent,
     INodeUpdatedEvent,
-    IRequestSnapshotSyncEvent
+    IRequestSnapshotSyncEvent,
+    ICrdtInitEvent,
+    ICrdtUpdateEvent,
+    ICrdtSyncRequestEvent
 } from '../../Interface.Event'
+import logger from '../../../utils/logger'
 
 type ChatFlowSnapshot = {
     id: string
@@ -307,11 +313,23 @@ export class ChatFlowCollaborationService {
     private roomManager: WSRoomManager
     private chatFlowEventService: ChatFlowEventService
     private stateService: ChatFlowStateService
+    private crdtService: ChatFlowCrdtService
+    private crdtEnabled: boolean
 
     constructor(roomManager: WSRoomManager) {
         this.roomManager = roomManager
         this.chatFlowEventService = new ChatFlowEventService()
         this.stateService = new ChatFlowStateService()
+        this.crdtService = new ChatFlowCrdtService()
+
+        // Enable CRDT by default (can be controlled by env var)
+        this.crdtEnabled = process.env.ENABLE_CRDT !== 'false'
+
+        if (this.crdtEnabled) {
+            logger.info('✅ [Collaboration]: CRDT mode enabled')
+        } else {
+            logger.info('ℹ️ [Collaboration]: CRDT mode disabled, using legacy mode')
+        }
     }
 
     /**
@@ -413,5 +431,191 @@ export class ChatFlowCollaborationService {
             }
         }
         this.roomManager.broadcast(event.chatflowId, cursorMoveEvent, socket)
+    }
+
+    // ==================== CRDT Methods ====================
+
+    /**
+     * Handle CRDT initialization (client joins with CRDT protocol)
+     */
+    async handleCrdtInit(socket: AuthenticatedWebSocket, event: IJoinChatFlowEvent | ICrdtInitEvent) {
+        if (!this.crdtEnabled) {
+            logger.warn('⚠️ [CRDT]: CRDT is disabled, rejecting CRDT_INIT')
+            socket.send(
+                JSON.stringify({
+                    type: 'CRDT_ERROR',
+                    message: 'CRDT protocol is not enabled on this server'
+                })
+            )
+            return
+        }
+
+        try {
+            const user = socket.user
+            if (!user) {
+                throw new Error('User not authenticated')
+            }
+
+            // Get or initialize the CRDT doc
+            await this.crdtService.getDoc(event.chatflowId, user.activeWorkspaceId)
+
+            // Send snapshot to client
+            await this.sendCrdtSnapshotToUser(socket, event)
+
+            logger.info(`📡 [CRDT]: Client initialized - SessionId: ${event.sessionId}, ChatflowId: ${event.chatflowId}`)
+        } catch (error) {
+            logger.error('❌ [CRDT]: Error in handleCrdtInit:', error)
+            socket.send(
+                JSON.stringify({
+                    type: 'CRDT_ERROR',
+                    message: 'Failed to initialize CRDT session'
+                })
+            )
+        }
+    }
+
+    /**
+     * Send CRDT snapshot to a specific user (who just joined)
+     */
+    async sendCrdtSnapshotToUser(socket: AuthenticatedWebSocket, event: IJoinChatFlowEvent | ICrdtInitEvent | ICrdtSyncRequestEvent) {
+        if (!this.crdtEnabled) return
+
+        try {
+            const chatflowId = event.chatflowId
+            const user = socket.user
+            if (!user) {
+                throw new Error('User not authenticated')
+            }
+
+            // Get the Loro document
+            await this.crdtService.getDoc(chatflowId, user.activeWorkspaceId)
+
+            // Export snapshot
+            const snapshotBytes = this.crdtService.getSnapshot(chatflowId)
+            const snapshotBase64 = encodeUpdate(snapshotBytes)
+
+            // Get metadata for debugging
+            const meta = this.crdtService.getDocMetadata(chatflowId)
+
+            const snapshotEvent = {
+                type: 'CRDT_SNAPSHOT',
+                chatflowId: chatflowId,
+                snapshot: snapshotBase64,
+                timestamp: Date.now(),
+                meta: meta || undefined
+            }
+
+            socket.send(JSON.stringify(snapshotEvent))
+            logger.debug(
+                `📤 [CRDT]: Sent snapshot to client - Size: ${meta?.snapshotSize || 0} bytes, Nodes: ${meta?.nodeCount || 0}, Edges: ${
+                    meta?.edgeCount || 0
+                }`
+            )
+        } catch (error) {
+            logger.error('❌ [CRDT]: Error sending snapshot:', error)
+            socket.send(
+                JSON.stringify({
+                    type: 'CRDT_ERROR',
+                    message: 'Failed to send snapshot'
+                })
+            )
+        }
+    }
+
+    /**
+     * Handle CRDT update from client
+     */
+    async handleCrdtUpdate(socket: AuthenticatedWebSocket, event: ICrdtUpdateEvent) {
+        if (!this.crdtEnabled) {
+            logger.warn('⚠️ [CRDT]: CRDT is disabled, rejecting CRDT_UPDATE')
+            return
+        }
+
+        try {
+            const user = socket.user
+            if (!user) {
+                throw new Error('User not authenticated')
+            }
+
+            // Decode the update
+            const updateBytes = decodeUpdate(event.update)
+
+            // Apply to CRDT doc
+            await this.crdtService.applyUpdate(event.chatflowId, updateBytes, user)
+
+            // Broadcast to other clients in the room
+            const broadcastEvent = {
+                type: 'ON_CRDT_UPDATE',
+                payload: {
+                    chatflowId: event.chatflowId,
+                    update: event.update,
+                    sourceSessionId: event.sessionId,
+                    timestamp: event.timestamp || Date.now()
+                }
+            }
+
+            this.roomManager.broadcast(event.chatflowId, broadcastEvent, socket)
+
+            logger.debug(`📥 [CRDT]: Applied update from session ${event.sessionId}`)
+        } catch (error) {
+            logger.error('❌ [CRDT]: Error handling update:', error)
+            socket.send(
+                JSON.stringify({
+                    type: 'CRDT_ERROR',
+                    message: 'Failed to apply update'
+                })
+            )
+        }
+    }
+
+    /**
+     * Handle CRDT sync request (client requests resync)
+     */
+    async handleCrdtSyncRequest(socket: AuthenticatedWebSocket, event: ICrdtSyncRequestEvent) {
+        if (!this.crdtEnabled) return
+
+        logger.info(`🔄 [CRDT]: Sync request from session ${event.sessionId}`)
+        await this.sendCrdtSnapshotToUser(socket, event)
+    }
+
+    /**
+     * Remove CRDT doc when room is empty
+     */
+    async removeCrdtDoc(event: ILeaveChatFlowEvent) {
+        if (!this.crdtEnabled) return
+
+        if (this.roomManager.isRoomEmpty(event.chatflowId)) {
+            await this.crdtService.removeDoc(event.chatflowId)
+        }
+    }
+
+    /**
+     * Check if CRDT is enabled
+     */
+    isCrdtEnabled(): boolean {
+        return this.crdtEnabled
+    }
+
+    /**
+     * Get CRDT service stats
+     */
+    getCrdtStats() {
+        if (!this.crdtEnabled) {
+            return { enabled: false }
+        }
+        return {
+            enabled: true,
+            ...this.crdtService.getStats()
+        }
+    }
+
+    /**
+     * Shutdown services
+     */
+    shutdown(): void {
+        this.stateService.shutdown()
+        if (this.crdtEnabled) {
+            this.crdtService.shutdown()
+        }
     }
 }

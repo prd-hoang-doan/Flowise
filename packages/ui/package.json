@@ -47,6 +47,7 @@
         "history": "^5.0.0",
         "html-react-parser": "^3.0.4",
         "lodash": "^4.17.21",
+        "loro-crdt": "^1.10.6",
         "lowlight": "^3.3.0",
         "moment": "^2.29.3",
         "notistack": "^2.0.4",

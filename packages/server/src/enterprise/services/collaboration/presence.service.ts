@@ -8,7 +8,8 @@ import {
     ILeaveChatFlowEvent,
     INodePresenceUpdatedEvent,
     IUserColorUpdatedEvent,
-    IUserHeartbeatEvent
+    IUserHeartbeatEvent,
+    ICrdtInitEvent
 } from '../../Interface.Event'
 import { sanitizeColor, sanitizeUserName } from '../../utils/validation'
 
@@ -44,7 +45,7 @@ export class PresenceService {
         this.startIdleCheckInterval()
     }
 
-    async handleJoin(socket: AuthenticatedWebSocket, event: IJoinChatFlowEvent) {
+    async handleJoin(socket: AuthenticatedWebSocket, event: IJoinChatFlowEvent | ICrdtInitEvent) {
         try {
             // Get authenticated user from socket
             const user = getAuthenticatedUser(socket)

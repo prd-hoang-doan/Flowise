@@ -5,7 +5,15 @@ import { ChatflowAuthService } from '../services/collaboration/chat-flow-auth.se
 import { WSRoomManager } from './wsRoomManager'
 import logger from '../../utils/logger'
 import { IEvent } from '../Interface.Event'
-import { isValidChatflowId, isValidSessionId, isValidNodeId, sanitizeColor, sanitizeTimestamp } from '../utils/validation'
+import {
+    isValidChatflowId,
+    isValidSessionId,
+    isValidNodeId,
+    sanitizeColor,
+    sanitizeTimestamp,
+    isValidCrdtUpdate,
+    isValidProtocolVersion
+} from '../utils/validation'
 
 export class WSRouter {
     private roomManager: WSRoomManager
@@ -20,7 +28,7 @@ export class WSRouter {
         this.chatFlowService = new ChatFlowCollaborationService(this.roomManager)
     }
 
-    handleEvent(socket: AuthenticatedWebSocket, event: IEvent) {
+    async handleEvent(socket: AuthenticatedWebSocket, event: IEvent) {
         // Verify socket is authenticated
         if (!socket.user) {
             logger.warn('⚠️ [WSRouter]: Received event from unauthenticated socket')
@@ -78,41 +86,90 @@ export class WSRouter {
             return
         }
 
+        // Validate CRDT-specific fields
+        if (event.type === 'CRDT_INIT' && 'protocolVersion' in event) {
+            if (!isValidProtocolVersion(event.protocolVersion)) {
+                logger.warn(`⚠️ [WSRouter]: Invalid protocol version: ${event.protocolVersion}`)
+                socket.send(
+                    JSON.stringify({
+                        type: 'validation-error',
+                        message: 'Invalid or unsupported protocol version'
+                    })
+                )
+                return
+            }
+        }
+
+        if (event.type === 'CRDT_UPDATE' && 'update' in event) {
+            if (!isValidCrdtUpdate(event.update)) {
+                logger.warn(`⚠️ [WSRouter]: Invalid CRDT update payload`)
+                socket.send(
+                    JSON.stringify({
+                        type: 'validation-error',
+                        message: 'Invalid CRDT update format'
+                    })
+                )
+                return
+            }
+        }
+
         switch (event.type) {
             // Presence events
             case 'JOIN_CHAT_FLOW':
-                this.presenceService.handleJoin(socket, event)
-                this.chatFlowService.sendSnapshotToUser(socket, event)
+                // Check if client wants CRDT protocol
+                if ('protocolVersion' in event && event.protocolVersion === 'crdt-v1') {
+                    // CRDT path
+                    await this.presenceService.handleJoin(socket, event)
+                    await this.chatFlowService.handleCrdtInit(socket, event)
+                } else {
+                    // Legacy path
+                    await this.presenceService.handleJoin(socket, event)
+                    await this.chatFlowService.sendSnapshotToUser(socket, event)
+                }
                 break
             case 'LEAVE_CHAT_FLOW':
-                this.presenceService.handleLeave(socket, event)
-                this.chatFlowService.removeSnapshot(event)
+                await this.presenceService.handleLeave(socket, event)
+                await this.chatFlowService.removeSnapshot(event)
+                // Also remove CRDT doc if CRDT is enabled
+                await this.chatFlowService.removeCrdtDoc(event)
                 break
             // User preference events
             case 'USER_COLOR_UPDATED':
-                this.presenceService.updateUserColor(socket, event)
+                await this.presenceService.updateUserColor(socket, event)
                 break
             case 'USER_HEARTBEAT':
-                this.presenceService.handleUserHeartbeat(socket, event)
+                await this.presenceService.handleUserHeartbeat(socket, event)
                 break
             // Snapshot sync events
             case 'REQUEST_SNAPSHOT_SYNC':
-                this.chatFlowService.broadcastSnapshotToUsers(socket, event)
+                await this.chatFlowService.broadcastSnapshotToUsers(socket, event)
                 break
 
-            // Chat flow collaboration events
+            // CRDT events
+            case 'CRDT_INIT':
+                await this.presenceService.handleJoin(socket, event)
+                await this.chatFlowService.handleCrdtInit(socket, event)
+                break
+            case 'CRDT_UPDATE':
+                await this.chatFlowService.handleCrdtUpdate(socket, event)
+                break
+            case 'CRDT_SYNC_REQUEST':
+                await this.chatFlowService.handleCrdtSyncRequest(socket, event)
+                break
+
+            // Chat flow collaboration events (legacy)
             case 'NODE_UPDATED':
             case 'EDGE_UPDATED':
-                this.chatFlowService.handleRemoteChange(socket, event)
+                await this.chatFlowService.handleRemoteChange(socket, event)
                 break
             // Cursor movement event
             case 'CURSOR_MOVED':
-                this.chatFlowService.handleCursorMove(socket, event)
+                await this.chatFlowService.handleCursorMove(socket, event)
                 break
 
             // Node-level presence events
             case 'NODE_PRESENCE_UPDATED':
-                this.presenceService.handleNodePresenceUpdated(socket, event)
+                await this.presenceService.handleNodePresenceUpdated(socket, event)
                 break
             default:
                 logger.warn(`⚠️ [WSRouter]: Unknown event`)
@@ -122,7 +179,7 @@ export class WSRouter {
     /**
      * Handle socket disconnect - clean up all presence for this socket
      */
-    handleDisconnect(socket: AuthenticatedWebSocket) {
-        this.presenceService.handleDisconnect(socket)
+    async handleDisconnect(socket: AuthenticatedWebSocket) {
+        await this.presenceService.handleDisconnect(socket)
     }
 }

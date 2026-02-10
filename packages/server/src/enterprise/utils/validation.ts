@@ -234,3 +234,48 @@ export function sanitizeTimestamp(timestamp: number | undefined): number {
 
     return timestamp
 }
+
+/**
+ * Validate CRDT update payload (base64 encoded)
+ * @param update - Base64 encoded CRDT update
+ * @returns true if valid, false otherwise
+ */
+export function isValidCrdtUpdate(update: string | undefined): boolean {
+    if (!update) {
+        return false
+    }
+
+    // Check if it's valid base64
+    const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/
+    if (!base64Regex.test(update)) {
+        logger.warn('⚠️ [Validation]: CRDT update is not valid base64')
+        return false
+    }
+
+    // Check reasonable size (max 5MB for CRDT updates)
+    const MAX_CRDT_UPDATE_SIZE = 5 * 1024 * 1024
+    const estimatedSize = (update.length * 3) / 4 // Base64 to bytes approximation
+
+    if (estimatedSize > MAX_CRDT_UPDATE_SIZE) {
+        logger.warn(`⚠️ [Validation]: CRDT update too large: ~${Math.round(estimatedSize / 1024 / 1024)} MB`)
+        return false
+    }
+
+    return true
+}
+
+/**
+ * Validate protocol version
+ * @param version - Protocol version string
+ * @returns true if valid, false otherwise
+ */
+export function isValidProtocolVersion(version: string | undefined): boolean {
+    if (!version) {
+        return false
+    }
+
+    // Currently only support 'crdt-v1'
+    const validVersions = ['crdt-v1']
+    return validVersions.includes(version)
+}
+

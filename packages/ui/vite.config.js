@@ -2,6 +2,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import dotenv from 'dotenv'
+import wasm from 'vite-plugin-wasm'
+import topLevelAwait from 'vite-plugin-top-level-await'
 
 export default defineConfig(async ({ mode }) => {
     let proxy = undefined
@@ -25,7 +27,7 @@ export default defineConfig(async ({ mode }) => {
 
     dotenv.config()
     return {
-        plugins: [react()],
+        plugins: [wasm(), topLevelAwait(), react()],
         resolve: {
             alias: {
                 '@': resolve(__dirname, 'src'),

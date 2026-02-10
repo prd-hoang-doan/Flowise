@@ -9,6 +9,7 @@ export interface IJoinChatFlowEvent extends IEventData {
     sessionId: string
     color: string
     timestamp: number
+    protocolVersion?: 'crdt-v1' // Optional: if specified, use CRDT protocol
 }
 
 export interface ILeaveChatFlowEvent extends IEventData {
@@ -75,6 +76,32 @@ export interface INodePresenceUpdatedEvent extends IEventData {
     action: 'enter' | 'leave' | 'edit_start' | 'edit_end'
 }
 
+// CRDT Events
+export interface ICrdtInitEvent extends IEventData {
+    type: 'CRDT_INIT'
+    chatflowId: string
+    sessionId: string
+    protocolVersion: 'crdt-v1'
+    color: string // For presence
+    timestamp: number
+    stateVector?: string // Optional: base64-encoded client state vector for incremental sync
+}
+
+export interface ICrdtUpdateEvent extends IEventData {
+    type: 'CRDT_UPDATE'
+    chatflowId: string
+    sessionId: string
+    update: string // base64-encoded Loro update (Uint8Array)
+    timestamp: number
+}
+
+export interface ICrdtSyncRequestEvent extends IEventData {
+    type: 'CRDT_SYNC_REQUEST'
+    chatflowId: string
+    sessionId: string
+    stateVector?: string // Optional: base64-encoded client state for incremental sync
+}
+
 export type IEvent =
     | IJoinChatFlowEvent
     | ILeaveChatFlowEvent
@@ -85,3 +112,6 @@ export type IEvent =
     | IEdgeUpdatedEvent
     | ICursorMovedEvent
     | INodePresenceUpdatedEvent
+    | ICrdtInitEvent
+    | ICrdtUpdateEvent
+    | ICrdtSyncRequestEvent
