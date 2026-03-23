@@ -23,7 +23,8 @@ import {
     IconLockCheck,
     IconFileDatabase,
     IconShieldLock,
-    IconListCheck
+    IconListCheck,
+    IconBrain
 } from '@tabler/icons-react'
 
 // constant
@@ -51,7 +52,8 @@ const icons = {
     IconLockCheck,
     IconFileDatabase,
     IconShieldLock,
-    IconListCheck
+    IconListCheck,
+    IconBrain
 }
 
 // ==============================|| DASHBOARD MENU ITEMS ||============================== //
@@ -155,6 +157,15 @@ const dashboard = {
                     icon: icons.IconFiles,
                     breadcrumbs: true,
                     permission: 'documentStores:view'
+                },
+                {
+                    id: 'deep-agents',
+                    title: 'Deep Agents',
+                    type: 'item',
+                    url: '/deep-agents',
+                    icon: icons.IconBrain,
+                    breadcrumbs: true,
+                    permission: 'deepAgents:view'
                 }
             ]
         },

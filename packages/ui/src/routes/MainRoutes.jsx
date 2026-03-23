@@ -61,6 +61,10 @@ const Logs = Loadable(lazy(() => import('@/views/serverlogs')))
 // executions routing
 const Executions = Loadable(lazy(() => import('@/views/agentexecutions')))
 
+// deep agents routing
+const DeepAgents = Loadable(lazy(() => import('@/views/deepagents')))
+const DeepAgentSession = Loadable(lazy(() => import('@/views/deepagents/DeepAgentSession')))
+
 // enterprise features
 const UsersPage = Loadable(lazy(() => import('@/views/users')))
 const RolesPage = Loadable(lazy(() => import('@/views/roles')))
@@ -229,6 +233,22 @@ const MainRoutes = {
             element: (
                 <RequireAuth permission={'documentStores:view'}>
                     <VectorStoreQuery />
+                </RequireAuth>
+            )
+        },
+        {
+            path: '/deep-agents',
+            element: (
+                <RequireAuth permission={'deepAgents:view'}>
+                    <DeepAgents />
+                </RequireAuth>
+            )
+        },
+        {
+            path: '/deep-agents/:id',
+            element: (
+                <RequireAuth permission={'deepAgents:view'}>
+                    <DeepAgentSession />
                 </RequireAuth>
             )
         },

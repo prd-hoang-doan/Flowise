@@ -53,6 +53,7 @@ import { AddSSOColumns1730519457880 } from '../../../enterprise/database/migrati
 import { AddPersonalWorkspace1734074497540 } from '../../../enterprise/database/migrations/postgres/1734074497540-AddPersonalWorkspace'
 import { RefactorEnterpriseDatabase1737076223692 } from '../../../enterprise/database/migrations/postgres/1737076223692-RefactorEnterpriseDatabase'
 import { ExecutionLinkWorkspaceId1746862866554 } from '../../../enterprise/database/migrations/postgres/1746862866554-ExecutionLinkWorkspaceId'
+import { AddDeepAgentEntities1769500000000 } from './1769500000000-AddDeepAgentEntities'
 
 export const postgresMigrations = [
     Init1693891895163,
@@ -109,5 +110,6 @@ export const postgresMigrations = [
     AddTextToSpeechToChatFlow1759419194331,
     AddChatFlowNameIndex1759424903973,
     AddApiKeyPermission1765360298674,
-    AddReasonContentToChatMessage1764759496768
+    AddReasonContentToChatMessage1764759496768,
+    AddDeepAgentEntities1769500000000
 ]

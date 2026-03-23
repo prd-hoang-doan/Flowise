@@ -22,6 +22,55 @@ export type AssistantType = 'CUSTOM' | 'OPENAI' | 'AZURE'
 
 export type ExecutionState = 'INPROGRESS' | 'FINISHED' | 'ERROR' | 'TERMINATED' | 'TIMEOUT' | 'STOPPED'
 
+// Deep Agent types
+export type DeepAgentSessionStatus = 'ACTIVE' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
+export type DeepAgentMessageRole = 'user' | 'assistant' | 'system' | 'tool'
+export type DeepAgentStepStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED'
+export type DeepAgentArtifactType = 'markdown' | 'text' | 'html'
+export type DeepAgentArtifactStatus = 'DRAFTING' | 'UPDATING' | 'COMPLETED'
+
+export interface IDeepAgentSession {
+    id: string
+    title: string
+    status: DeepAgentSessionStatus
+    createdDate: Date
+    updatedDate: Date
+    workspaceId: string
+}
+
+export interface IDeepAgentMessage {
+    id: string
+    sessionId: string
+    role: DeepAgentMessageRole
+    content: string
+    createdDate: Date
+}
+
+export interface IDeepAgentStep {
+    id: string
+    sessionId: string
+    stepIndex: number
+    description: string
+    status: DeepAgentStepStatus
+    toolName?: string
+    toolInput?: string
+    toolOutput?: string
+    error?: string
+    startedAt?: Date
+    completedAt?: Date
+}
+
+export interface IDeepAgentArtifact {
+    id: string
+    sessionId: string
+    type: DeepAgentArtifactType
+    content: string
+    version: number
+    status: DeepAgentArtifactStatus
+    createdDate: Date
+    updatedDate: Date
+}
+
 export enum MODE {
     QUEUE = 'queue',
     MAIN = 'main'
