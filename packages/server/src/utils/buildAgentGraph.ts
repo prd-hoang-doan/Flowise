@@ -169,30 +169,31 @@ export const buildAgentGraph = async ({
             if (streamResults) {
                 let isStreamingStarted = false
                 for await (const output of await streamResults) {
-                    if (!output?.__end__) {
-                        for (const agentName of Object.keys(output)) {
+                    const typedOutput = output as Record<string, any>
+                    if (!typedOutput?.__end__) {
+                        for (const agentName of Object.keys(typedOutput)) {
                             if (!mapNameToLabel[agentName]) continue
 
-                            const nodeId = output[agentName]?.messages
-                                ? output[agentName].messages[output[agentName].messages.length - 1]?.additional_kwargs?.nodeId
+                            const nodeId = typedOutput[agentName]?.messages
+                                ? typedOutput[agentName].messages[typedOutput[agentName].messages.length - 1]?.additional_kwargs?.nodeId
                                 : ''
-                            const usedTools = output[agentName]?.messages
-                                ? output[agentName].messages.map((msg: BaseMessage) => msg.additional_kwargs?.usedTools)
+                            const usedTools = typedOutput[agentName]?.messages
+                                ? typedOutput[agentName].messages.map((msg: BaseMessage) => msg.additional_kwargs?.usedTools)
                                 : []
-                            const sourceDocuments = output[agentName]?.messages
-                                ? output[agentName].messages.map((msg: BaseMessage) => msg.additional_kwargs?.sourceDocuments)
+                            const sourceDocuments = typedOutput[agentName]?.messages
+                                ? typedOutput[agentName].messages.map((msg: BaseMessage) => msg.additional_kwargs?.sourceDocuments)
                                 : []
-                            const artifacts = output[agentName]?.messages
-                                ? output[agentName].messages.map((msg: BaseMessage) => msg.additional_kwargs?.artifacts)
+                            const artifacts = typedOutput[agentName]?.messages
+                                ? typedOutput[agentName].messages.map((msg: BaseMessage) => msg.additional_kwargs?.artifacts)
                                 : []
-                            const messages = output[agentName]?.messages
-                                ? output[agentName].messages.map((msg: BaseMessage) => (typeof msg === 'string' ? msg : msg.content))
+                            const messages = typedOutput[agentName]?.messages
+                                ? typedOutput[agentName].messages.map((msg: BaseMessage) => (typeof msg === 'string' ? msg : msg.content))
                                 : []
-                            lastMessageRaw = output[agentName]?.messages
-                                ? output[agentName].messages[output[agentName].messages.length - 1]
+                            lastMessageRaw = typedOutput[agentName]?.messages
+                                ? typedOutput[agentName].messages[typedOutput[agentName].messages.length - 1]
                                 : {}
 
-                            const state = omit(output[agentName], ['messages'])
+                            const state = omit(typedOutput[agentName], ['messages'])
 
                             if (usedTools && usedTools.length) {
                                 const cleanedTools = usedTools.filter((tool: IUsedTool) => tool)
@@ -238,8 +239,8 @@ export const buildAgentGraph = async ({
                             const reasoning = {
                                 agentName: mapNameToLabel[agentName].label,
                                 messages,
-                                next: output[agentName]?.next,
-                                instructions: output[agentName]?.instructions,
+                                next: typedOutput[agentName]?.next,
+                                instructions: typedOutput[agentName]?.instructions,
                                 usedTools: flatten(usedTools) as IUsedTool[],
                                 sourceDocuments: flatten(sourceDocuments) as Document[],
                                 artifacts: flatten(artifacts) as ICommonObject[],
@@ -249,12 +250,13 @@ export const buildAgentGraph = async ({
                             }
                             agentReasoning.push(reasoning)
 
-                            finalSummarization = output[agentName]?.summarization ?? ''
+                            finalSummarization = typedOutput[agentName]?.summarization ?? ''
 
                             lastWorkerResult =
-                                output[agentName]?.messages?.length &&
-                                output[agentName].messages[output[agentName].messages.length - 1]?.additional_kwargs?.type === 'worker'
-                                    ? output[agentName].messages[output[agentName].messages.length - 1].content
+                                typedOutput[agentName]?.messages?.length &&
+                                typedOutput[agentName].messages[typedOutput[agentName].messages.length - 1]?.additional_kwargs?.type ===
+                                    'worker'
+                                    ? typedOutput[agentName].messages[typedOutput[agentName].messages.length - 1].content
                                     : lastWorkerResult
 
                             if (shouldStreamResponse) {
@@ -278,8 +280,8 @@ export const buildAgentGraph = async ({
                             }
                         }
                     } else {
-                        finalResult = output.__end__.messages.length ? output.__end__.messages.pop()?.content : ''
-                        if (Array.isArray(finalResult)) finalResult = output.__end__.instructions
+                        finalResult = typedOutput.__end__.messages.length ? typedOutput.__end__.messages.pop()?.content : ''
+                        if (Array.isArray(finalResult)) finalResult = typedOutput.__end__.instructions
                         if (shouldStreamResponse && sseStreamer) {
                             sseStreamer.streamTokenEvent(chatId, finalResult)
                         }
@@ -500,7 +502,7 @@ const compileMultiAgentsGraph = async (params: MultiAgentsGraphParams) => {
                 supervisorWorkers[parentSupervisor] = [workerResult]
             }
 
-            workflowGraph.addNode(workerResult.name, workerResult.node)
+            ;(workflowGraph as any).addNode(workerResult.name, workerResult.node)
         } catch (e) {
             throw new InternalFlowiseError(StatusCodes.INTERNAL_SERVER_ERROR, `Error initialize worker nodes - ${getErrorMessage(e)}`)
         }
@@ -547,7 +549,7 @@ const compileMultiAgentsGraph = async (params: MultiAgentsGraphParams) => {
                 }
             }
 
-            workflowGraph.addNode(supervisorResult.name, supervisorResult.node)
+            ;(workflowGraph as any).addNode(supervisorResult.name, supervisorResult.node)
 
             for (const worker of supervisorResult.workers) {
                 //@ts-ignore
@@ -603,7 +605,7 @@ const compileMultiAgentsGraph = async (params: MultiAgentsGraphParams) => {
             return await graph.stream(
                 {
                     messages: [...prependMessages, new HumanMessage({ content: finalQuestion })]
-                },
+                } as any,
                 {
                     recursionLimit: supervisorResult?.recursionLimit ?? 100,
                     callbacks: [loggerHandler, ...callbacks],

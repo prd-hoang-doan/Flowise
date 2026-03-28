@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express'
 import deepAgentsService, { DeepAgentSessionFilters } from '../../services/deep-agents'
 import { DeepAgentSessionStatus } from '../../Interface'
-import { deepAgentOrchestrator } from './orchestrator'
+import { deepAgentOrchestrator } from './orchestrator-v2'
 
 // ==============================|| SESSION ENDPOINTS ||============================== //
 

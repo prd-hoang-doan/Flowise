@@ -86,10 +86,13 @@ const DeepAgentSession = () => {
     const [copied, setCopied] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
     const [exportAnchor, setExportAnchor] = useState(null)
+    const [isStreamingMessage, setIsStreamingMessage] = useState(false)
 
     const messagesEndRef = useRef(null)
     const abortControllerRef = useRef(null)
     const containerRef = useRef(null)
+    // Tracks the ID of the in-progress streaming assistant message (v2 orchestrator)
+    const streamingMessageIdRef = useRef(null)
 
     // ==============================|| DATA LOADING ||============================== //
 
@@ -208,12 +211,31 @@ const DeepAgentSession = () => {
 
     const handleSSEEvent = (event) => {
         switch (event.event) {
-            case 'message':
-                setMessages((prev) => [
-                    ...prev,
-                    { id: Date.now().toString(), role: event.data.role, content: event.data.content, createdDate: new Date().toISOString() }
-                ])
+            case 'message': {
+                const { role, content, streaming } = event.data
+                if (streaming) {
+                    // v2 orchestrator: accumulate tokens into a single streaming bubble
+                    if (!streamingMessageIdRef.current) {
+                        const id = `streaming-${Date.now()}`
+                        streamingMessageIdRef.current = id
+                        setIsStreamingMessage(true)
+                        setMessages((prev) => [...prev, { id, role, content, streaming: true, createdDate: new Date().toISOString() }])
+                    } else {
+                        const streamId = streamingMessageIdRef.current
+                        setMessages((prev) => prev.map((msg) => (msg.id === streamId ? { ...msg, content: msg.content + content } : msg)))
+                    }
+                } else {
+                    // Non-streaming message: finalize any active streaming bubble first
+                    if (streamingMessageIdRef.current) {
+                        const streamId = streamingMessageIdRef.current
+                        setMessages((prev) => prev.map((msg) => (msg.id === streamId ? { ...msg, streaming: false } : msg)))
+                        streamingMessageIdRef.current = null
+                        setIsStreamingMessage(false)
+                    }
+                    setMessages((prev) => [...prev, { id: Date.now().toString(), role, content, createdDate: new Date().toISOString() }])
+                }
                 break
+            }
             case 'step_update':
                 if (event.data.stepId) {
                     setSteps((prev) => {
@@ -244,6 +266,13 @@ const DeepAgentSession = () => {
                 break
             case 'status':
                 if (event.data.status === 'COMPLETED' || event.data.status === 'FAILED' || event.data.status === 'CANCELLED') {
+                    // Finalize any residual streaming message
+                    if (streamingMessageIdRef.current) {
+                        const streamId = streamingMessageIdRef.current
+                        setMessages((prev) => prev.map((msg) => (msg.id === streamId ? { ...msg, streaming: false } : msg)))
+                        streamingMessageIdRef.current = null
+                        setIsStreamingMessage(false)
+                    }
                     setIsRunning(false)
                     // Refresh full session data to get persisted artifacts
                     getSessionApi.request(sessionId)
@@ -467,14 +496,41 @@ const DeepAgentSession = () => {
                                                 </Typography>
                                             ) : (
                                                 <Box sx={{ '& p': { m: 0 }, '& p:first-of-type': { mt: 0 } }}>
+                                                    {msg.streaming && (
+                                                        <Typography
+                                                            variant='caption'
+                                                            color='textSecondary'
+                                                            sx={{ display: 'block', mb: 0.5, fontStyle: 'italic' }}
+                                                        >
+                                                            Thinking...
+                                                        </Typography>
+                                                    )}
                                                     <MemoizedReactMarkdown>{msg.content}</MemoizedReactMarkdown>
+                                                    {msg.streaming && (
+                                                        <Box
+                                                            component='span'
+                                                            sx={{
+                                                                display: 'inline-block',
+                                                                width: '2px',
+                                                                height: '1em',
+                                                                backgroundColor: theme.palette.text.primary,
+                                                                ml: '2px',
+                                                                verticalAlign: 'text-bottom',
+                                                                animation: 'blink 1s step-end infinite',
+                                                                '@keyframes blink': {
+                                                                    '0%, 100%': { opacity: 1 },
+                                                                    '50%': { opacity: 0 }
+                                                                }
+                                                            }}
+                                                        />
+                                                    )}
                                                 </Box>
                                             )}
                                         </Box>
                                     </Box>
                                 ))
                         )}
-                        {isRunning && (
+                        {isRunning && !isStreamingMessage && (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 1 }}>
                                 <CircularProgress size={16} />
                                 <Typography variant='body2' color='textSecondary'>
