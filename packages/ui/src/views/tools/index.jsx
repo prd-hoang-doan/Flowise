@@ -8,8 +8,11 @@ import { useTheme } from '@mui/material/styles'
 import MainCard from '@/ui-component/cards/MainCard'
 import ItemCard from '@/ui-component/cards/ItemCard'
 import MCPItemCard from '@/ui-component/cards/MCPItemCard'
+import SkillFolderCard from '@/ui-component/cards/SkillFolderCard'
 import ToolDialog from './ToolDialog'
 import CustomMcpServerDialog from './CustomMcpServerDialog'
+import SkillFolderDialog from './SkillFolderDialog'
+import SkillFolderEditorDialog from './SkillFolderEditorDialog'
 import ViewHeader from '@/layout/MainLayout/ViewHeader'
 import ErrorBoundary from '@/ErrorBoundary'
 import { ToolsTable } from '@/ui-component/table/ToolsListTable'
@@ -20,6 +23,7 @@ import TablePagination, { DEFAULT_ITEMS_PER_PAGE } from '@/ui-component/paginati
 // API
 import toolsApi from '@/api/tools'
 import customMcpServersApi from '@/api/custommcpservers'
+import skillFoldersApi from '@/api/skillfolders'
 
 // Hooks
 import useApi from '@/hooks/useApi'
@@ -36,6 +40,7 @@ const Tools = () => {
     const theme = useTheme()
     const getAllToolsApi = useApi(toolsApi.getAllTools)
     const getAllCustomMcpServersApi = useApi(customMcpServersApi.getAllCustomMcpServers)
+    const getAllSkillFoldersApi = useApi(skillFoldersApi.getAllSkillFolders)
     const { error, setError } = useError()
 
     const [tabValue, setTabValue] = useState(0)
@@ -54,6 +59,16 @@ const Tools = () => {
     const [mcpTotal, setMcpTotal] = useState(0)
     const [mcpCurrentPage, setMcpCurrentPage] = useState(1)
     const [mcpPageLimit, setMcpPageLimit] = useState(DEFAULT_ITEMS_PER_PAGE)
+
+    // Skills state
+    const [skillsLoading, setSkillsLoading] = useState(true)
+    const [showSkillFolderDialog, setShowSkillFolderDialog] = useState(false)
+    const [skillFolderDialogProps, setSkillFolderDialogProps] = useState({})
+    const [showSkillEditorDialog, setShowSkillEditorDialog] = useState(false)
+    const [selectedSkillFolder, setSelectedSkillFolder] = useState(null)
+    const [skillsTotal, setSkillsTotal] = useState(0)
+    const [skillsCurrentPage, setSkillsCurrentPage] = useState(1)
+    const [skillsPageLimit, setSkillsPageLimit] = useState(DEFAULT_ITEMS_PER_PAGE)
 
     /* Table Pagination */
     const [currentPage, setCurrentPage] = useState(1)
@@ -179,6 +194,41 @@ const Tools = () => {
         refreshCustomMcp(mcpCurrentPage, mcpPageLimit)
     }
 
+    // Skills handlers
+    const onSkillsPageChange = (page, limit) => {
+        setSkillsCurrentPage(page)
+        setSkillsPageLimit(limit)
+        refreshSkillFolders(page, limit)
+    }
+
+    const refreshSkillFolders = (page, limit) => {
+        const params = {
+            page: page || skillsCurrentPage,
+            limit: limit || skillsPageLimit
+        }
+        getAllSkillFoldersApi.request(params)
+    }
+
+    const addNewSkillFolder = () => {
+        setSkillFolderDialogProps({ type: 'ADD' })
+        setShowSkillFolderDialog(true)
+    }
+
+    const editSkillFolder = (folder) => {
+        setSkillFolderDialogProps({ type: 'EDIT', data: folder })
+        setShowSkillFolderDialog(true)
+    }
+
+    const openSkillFolder = (folder) => {
+        setSelectedSkillFolder(folder)
+        setShowSkillEditorDialog(true)
+    }
+
+    const onSkillFolderConfirm = () => {
+        setShowSkillFolderDialog(false)
+        refreshSkillFolders(skillsCurrentPage, skillsPageLimit)
+    }
+
     const [search, setSearch] = useState('')
     const onSearchChange = (event) => {
         setSearch(event.target.value)
@@ -195,9 +245,15 @@ const Tools = () => {
         return data.name.toLowerCase().indexOf(s) > -1 || (data.serverUrl && data.serverUrl.toLowerCase().indexOf(s) > -1)
     }
 
+    function filterSkillFolders(data) {
+        const s = search.toLowerCase()
+        return data.name.toLowerCase().indexOf(s) > -1 || (data.description && data.description.toLowerCase().indexOf(s) > -1)
+    }
+
     useEffect(() => {
         refresh(currentPage, pageLimit)
         refreshCustomMcp(mcpCurrentPage, mcpPageLimit)
+        refreshSkillFolders(skillsCurrentPage, skillsPageLimit)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
@@ -220,6 +276,16 @@ const Tools = () => {
             setMcpTotal(getAllCustomMcpServersApi.data.total)
         }
     }, [getAllCustomMcpServersApi.data])
+
+    useEffect(() => {
+        setSkillsLoading(getAllSkillFoldersApi.loading)
+    }, [getAllSkillFoldersApi.loading])
+
+    useEffect(() => {
+        if (getAllSkillFoldersApi.data) {
+            setSkillsTotal(getAllSkillFoldersApi.data.total)
+        }
+    }, [getAllSkillFoldersApi.data])
 
     const renderCustomToolsTab = () => (
         <>
@@ -405,6 +471,87 @@ const Tools = () => {
         </>
     )
 
+    const renderSkillsTab = () => (
+        <>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2 }}>
+                <ToggleButtonGroup
+                    sx={{ borderRadius: 2, maxHeight: 40 }}
+                    value={view}
+                    color='primary'
+                    disabled={skillsTotal === 0}
+                    exclusive
+                    onChange={handleChange}
+                >
+                    <ToggleButton
+                        sx={{
+                            borderColor: theme.palette.grey[900] + 25,
+                            borderRadius: 2,
+                            color: theme?.customization?.isDarkMode ? 'white' : 'inherit'
+                        }}
+                        variant='contained'
+                        value='card'
+                        title='Card View'
+                    >
+                        <IconLayoutGrid />
+                    </ToggleButton>
+                    <ToggleButton
+                        sx={{
+                            borderColor: theme.palette.grey[900] + 25,
+                            borderRadius: 2,
+                            color: theme?.customization?.isDarkMode ? 'white' : 'inherit'
+                        }}
+                        variant='contained'
+                        value='list'
+                        title='List View'
+                    >
+                        <IconList />
+                    </ToggleButton>
+                </ToggleButtonGroup>
+                <ButtonGroup disableElevation aria-label='outlined primary button group'>
+                    <StyledPermissionButton
+                        permissionId={'tools:create'}
+                        variant='contained'
+                        onClick={addNewSkillFolder}
+                        startIcon={<IconPlus />}
+                        sx={{ borderRadius: 2, height: 40 }}
+                    >
+                        Create Skill Folder
+                    </StyledPermissionButton>
+                </ButtonGroup>
+            </Box>
+            {skillsLoading && (
+                <Box display='grid' gridTemplateColumns='repeat(3, 1fr)' gap={gridSpacing}>
+                    <Skeleton variant='rounded' height={160} />
+                    <Skeleton variant='rounded' height={160} />
+                    <Skeleton variant='rounded' height={160} />
+                </Box>
+            )}
+            {!skillsLoading && skillsTotal > 0 && (
+                <>
+                    <Box display='grid' gridTemplateColumns='repeat(3, 1fr)' gap={gridSpacing}>
+                        {getAllSkillFoldersApi.data?.data?.filter(filterSkillFolders).map((folder, index) => (
+                            <SkillFolderCard key={index} data={folder} onClick={() => openSkillFolder(folder)} />
+                        ))}
+                    </Box>
+                    <TablePagination
+                        currentPage={skillsCurrentPage}
+                        limit={skillsPageLimit}
+                        total={skillsTotal}
+                        onChange={onSkillsPageChange}
+                    />
+                </>
+            )}
+            {!skillsLoading && skillsTotal === 0 && (
+                <Stack sx={{ alignItems: 'center', justifyContent: 'center' }} flexDirection='column'>
+                    <Box sx={{ p: 2, height: 'auto' }}>
+                        <img style={{ objectFit: 'cover', height: '20vh', width: 'auto' }} src={ToolEmptySVG} alt='ToolEmptySVG' />
+                    </Box>
+                    <div>No Skills Created Yet</div>
+                </Stack>
+            )}
+        </>
+    )
+
     return (
         <>
             <MainCard>
@@ -415,7 +562,9 @@ const Tools = () => {
                         <ViewHeader
                             onSearchChange={onSearchChange}
                             search={true}
-                            searchPlaceholder={tabValue === 0 ? 'Search Tools' : 'Search Custom MCP Servers'}
+                            searchPlaceholder={
+                                tabValue === 0 ? 'Search Tools' : tabValue === 1 ? 'Search Custom MCP Servers' : 'Search Skill Folders'
+                            }
                             title='Tools'
                             description='External functions or APIs the agent can use to take action'
                         />
@@ -427,9 +576,11 @@ const Tools = () => {
                         >
                             <Tab label='Custom Tools' />
                             <Tab label='Custom MCP Servers' />
+                            <Tab label='Skills' />
                         </Tabs>
                         {tabValue === 0 && renderCustomToolsTab()}
                         {tabValue === 1 && renderMcpServersTab()}
+                        {tabValue === 2 && renderSkillsTab()}
                     </Stack>
                 )}
             </MainCard>
@@ -448,6 +599,18 @@ const Tools = () => {
                 }}
                 onConfirm={onCustomMcpConfirm}
                 onAuthorize={onAuthorize}
+            />
+            <SkillFolderDialog
+                show={showSkillFolderDialog}
+                dialogProps={skillFolderDialogProps}
+                onCancel={() => setShowSkillFolderDialog(false)}
+                onConfirm={onSkillFolderConfirm}
+            />
+            <SkillFolderEditorDialog
+                show={showSkillEditorDialog}
+                folder={selectedSkillFolder}
+                onCancel={() => setShowSkillEditorDialog(false)}
+                onFolderUpdated={() => refreshSkillFolders(skillsCurrentPage, skillsPageLimit)}
             />
         </>
     )

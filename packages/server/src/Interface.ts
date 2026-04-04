@@ -119,6 +119,27 @@ export interface ITool {
     workspaceId: string
 }
 
+export interface ISkillFolder {
+    id: string
+    name: string
+    color: string
+    iconSrc?: string
+    description?: string
+    updatedDate: Date
+    createdDate: Date
+    workspaceId: string
+}
+
+export interface ISkillFile {
+    id: string
+    folderId: string
+    name: string
+    content?: string
+    updatedDate: Date
+    createdDate: Date
+    workspaceId: string
+}
+
 export interface IAssistant {
     id: string
     details: string
