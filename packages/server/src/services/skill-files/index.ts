@@ -5,6 +5,31 @@ import { InternalFlowiseError } from '../../errors/internalFlowiseError'
 import { getErrorMessage } from '../../errors/utils'
 import { getRunningExpressApp } from '../../utils/getRunningExpressApp'
 
+/**
+ * Extract name and description from YAML front matter in markdown content.
+ * Expected format:
+ * ---
+ * name: marketing_copy_generator
+ * description: Generate marketing copy based on a product description
+ * ---
+ * <content goes here>
+ */
+const extractFrontMatter = (content: string): { name?: string; description?: string } => {
+    const match = content.match(/^---\s*\n([\s\S]*?)\n---/)
+    if (!match) return {}
+
+    const frontMatter = match[1]
+    const result: { name?: string; description?: string } = {}
+
+    const nameMatch = frontMatter.match(/^name:\s*(.+)$/m)
+    if (nameMatch) result.name = nameMatch[1].trim()
+
+    const descMatch = frontMatter.match(/^description:\s*(.+)$/m)
+    if (descMatch) result.description = descMatch[1].trim()
+
+    return result
+}
+
 const createSkillFile = async (folderId: string, requestBody: any, workspaceId: string): Promise<any> => {
     try {
         const appServer = getRunningExpressApp()
@@ -20,6 +45,11 @@ const createSkillFile = async (folderId: string, requestBody: any, workspaceId: 
 
         const newFile = new SkillFile()
         Object.assign(newFile, requestBody)
+        if (requestBody.content) {
+            const { name, description } = extractFrontMatter(requestBody.content)
+            if (name) newFile.name = name
+            if (description) newFile.description = description
+        }
         newFile.folderId = folderId
         newFile.workspaceId = workspaceId
         const file = appServer.AppDataSource.getRepository(SkillFile).create(newFile)
@@ -88,6 +118,19 @@ const getSkillFileById = async (fileId: string, folderId: string, workspaceId: s
     }
 }
 
+/**
+ * Update a skill file. Only fields provided in the body will be updated
+ * @param fileId The ID of the skill file to update
+ * @param folderId The ID of the folder containing the skill file
+ * @param fileBody An object containing the fields to update
+ * @param workspaceId The ID of the workspace containing the skill file
+ * @param fileBody.content the content of the markdown file. This should be a string in markdown format below the front matter
+ * ---
+ * name: marketing_copy_generator
+ * description: Generate marketing copy based on a product description
+ * ---
+ * <content goes here>
+ */
 const updateSkillFile = async (fileId: string, folderId: string, fileBody: any, workspaceId: string): Promise<any> => {
     try {
         const appServer = getRunningExpressApp()
@@ -101,6 +144,11 @@ const updateSkillFile = async (fileId: string, folderId: string, fileBody: any, 
         }
         const updateFile = new SkillFile()
         Object.assign(updateFile, fileBody)
+        if (fileBody.content) {
+            const { name, description } = extractFrontMatter(fileBody.content)
+            if (name) updateFile.name = name
+            if (description) updateFile.description = description
+        }
         appServer.AppDataSource.getRepository(SkillFile).merge(file, updateFile)
         file.folderId = folderId
         file.workspaceId = workspaceId

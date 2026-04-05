@@ -45,6 +45,7 @@ import { AddApiKeyPermission1765360298674 } from './1765360298674-AddApiKeyPermi
 import { AddReasonContentToChatMessage1764759496768 } from './1764759496768-AddReasonContentToChatMessage'
 import { AddCustomMcpServer1766000000000 } from './1766000000000-AddCustomMcpServer'
 import { AddSkillFolderAndFile1767000000000 } from './1767000000000-AddSkillFolderAndFile'
+import { AddSkillFileDescriptionAndFilename1767100000000 } from './1767100000000-AddSkillFileDescriptionAndFilename'
 import { AddAuthTables1720230151482 } from '../../../enterprise/database/migrations/mariadb/1720230151482-AddAuthTables'
 import { AddWorkspace1725437498242 } from '../../../enterprise/database/migrations/mariadb/1725437498242-AddWorkspace'
 import { AddWorkspaceShared1726654922034 } from '../../../enterprise/database/migrations/mariadb/1726654922034-AddWorkspaceShared'
@@ -115,5 +116,6 @@ export const mariadbMigrations = [
     AddApiKeyPermission1765360298674,
     AddReasonContentToChatMessage1764759496768,
     AddCustomMcpServer1766000000000,
-    AddSkillFolderAndFile1767000000000
+    AddSkillFolderAndFile1767000000000,
+    AddSkillFileDescriptionAndFilename1767100000000
 ]

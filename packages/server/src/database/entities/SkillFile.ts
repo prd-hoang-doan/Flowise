@@ -14,6 +14,12 @@ export class SkillFile implements ISkillFile {
     name: string
 
     @Column({ nullable: true, type: 'text' })
+    description?: string
+
+    @Column({ nullable: true })
+    filename?: string
+
+    @Column({ nullable: true, type: 'text' })
     content?: string
 
     @Column({ type: 'timestamp' })

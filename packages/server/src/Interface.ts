@@ -134,6 +134,8 @@ export interface ISkillFile {
     id: string
     folderId: string
     name: string
+    description?: string
+    filename?: string
     content?: string
     updatedDate: Date
     createdDate: Date

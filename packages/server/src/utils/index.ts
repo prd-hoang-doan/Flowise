@@ -63,6 +63,8 @@ import {
     SecretsManagerClient,
     SecretsManagerClientConfig
 } from '@aws-sdk/client-secrets-manager'
+import { SkillFolder } from '../database/entities/SkillFolder'
+import { SkillFile } from '../database/entities/SkillFile'
 
 export const QUESTION_VAR_PREFIX = 'question'
 export const FILE_ATTACHMENT_PREFIX = 'file_attachment'
@@ -102,7 +104,9 @@ export const databaseEntities: IDatabaseEntity = {
     Variable: Variable,
     DocumentStore: DocumentStore,
     DocumentStoreFileChunk: DocumentStoreFileChunk,
-    CustomMcpServer: CustomMcpServer
+    CustomMcpServer: CustomMcpServer,
+    SkillFolder: SkillFolder,
+    SkillFile: SkillFile
 }
 
 /**

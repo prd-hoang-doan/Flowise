@@ -16,8 +16,7 @@ import {
     Box,
     Button,
     Typography,
-    Dialog,
-    DialogContent,
+    Drawer,
     IconButton,
     List,
     ListItemButton,
@@ -30,7 +29,6 @@ import {
     Menu,
     MenuItem,
     Tooltip,
-    AppBar,
     Toolbar
 } from '@mui/material'
 import { useTheme, styled } from '@mui/material/styles'
@@ -42,11 +40,11 @@ import {
     IconFile,
     IconEdit,
     IconEye,
-    IconColumns,
     IconTrash,
     IconPencil,
     IconDotsVertical,
-    IconDeviceFloppy
+    IconDeviceFloppy,
+    IconChevronRight
 } from '@tabler/icons-react'
 
 // API
@@ -54,6 +52,8 @@ import skillFilesApi from '@/api/skillfiles'
 
 // Store
 import { HIDE_CANVAS_DIALOG, SHOW_CANVAS_DIALOG } from '@/store/actions'
+
+const DRAWER_WIDTH = '50vw'
 
 const lowlight = createLowlight(common)
 
@@ -163,7 +163,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     const [files, setFiles] = useState([])
     const [activeFileId, setActiveFileId] = useState(null)
     const [activeFileContent, setActiveFileContent] = useState('')
-    const [viewMode, setViewMode] = useState('split') // 'edit' | 'preview' | 'split'
+    const [viewMode, setViewMode] = useState('edit') // 'edit' | 'preview'
     const [dirty, setDirty] = useState(false)
     const [menuAnchor, setMenuAnchor] = useState(null)
     const [menuFileId, setMenuFileId] = useState(null)
@@ -181,6 +181,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                 CodeBlockLowlight.configure({ lowlight })
             ],
             content: activeFileContent || '',
+            contentType: 'markdown',
             editable: true,
             onUpdate: ({ editor }) => {
                 setDirty(true)
@@ -381,60 +382,99 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     const activeFile = files.find((f) => f.id === activeFileId)
 
     const component = show ? (
-        <Dialog fullScreen open={show} onClose={handleClose}>
-            <AppBar sx={{ position: 'relative', bgcolor: theme.palette.background.default, boxShadow: 1 }}>
-                <Toolbar>
-                    <Typography sx={{ flex: 1, color: theme.palette.text.primary }} variant='h4' component='div'>
+        <Drawer
+            anchor='right'
+            variant='persistent'
+            open={show}
+            sx={{
+                '& .MuiDrawer-paper': {
+                    width: DRAWER_WIDTH,
+                    boxSizing: 'border-box',
+                    display: 'flex',
+                    flexDirection: 'column'
+                }
+            }}
+        >
+            {/* Top Toolbar */}
+            <Toolbar
+                variant='dense'
+                sx={{
+                    bgcolor: theme.palette.background.default,
+                    borderBottom: 1,
+                    borderColor: 'divider',
+                    minHeight: 48,
+                    px: 1.5,
+                    gap: 1
+                }}
+            >
+                <Tooltip title='Close'>
+                    <IconButton size='small' onClick={handleClose}>
+                        <IconChevronRight size={20} />
+                    </IconButton>
+                </Tooltip>
+                <Divider orientation='vertical' flexItem sx={{ mx: 0.5 }} />
+                {activeFile ? (
+                    <>
+                        <IconFile size={16} />
+                        <Typography variant='body2' noWrap sx={{ flex: 1, fontWeight: 500 }}>
+                            {activeFile.name}
+                        </Typography>
+                    </>
+                ) : (
+                    <Typography variant='body2' noWrap sx={{ flex: 1, color: 'text.secondary' }}>
                         {folder?.name || 'Skill Folder'}
                     </Typography>
-                    {activeFileId && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
-                            {saving && (
-                                <Typography variant='caption' color='textSecondary'>
-                                    Saving…
-                                </Typography>
-                            )}
-                            {dirty && !saving && (
-                                <Typography variant='caption' color='warning.main'>
-                                    Unsaved
-                                </Typography>
-                            )}
-                            {!dirty && !saving && activeFileId && (
-                                <Typography variant='caption' color='success.main'>
-                                    Saved
-                                </Typography>
-                            )}
-                            <Tooltip title='Save (Ctrl+S)'>
-                                <span>
-                                    <IconButton onClick={manualSave} disabled={!dirty} color='primary'>
-                                        <IconDeviceFloppy size={20} />
-                                    </IconButton>
-                                </span>
-                            </Tooltip>
-                        </Box>
-                    )}
-                    <ToggleButtonGroup size='small' value={viewMode} exclusive onChange={(e, v) => v && setViewMode(v)} sx={{ mr: 2 }}>
-                        <ToggleButton value='edit' title='Edit'>
-                            <IconEdit size={18} />
-                        </ToggleButton>
-                        <ToggleButton value='split' title='Split'>
-                            <IconColumns size={18} />
-                        </ToggleButton>
-                        <ToggleButton value='preview' title='Preview'>
-                            <IconEye size={18} />
-                        </ToggleButton>
-                    </ToggleButtonGroup>
-                    <IconButton edge='end' onClick={handleClose} sx={{ color: theme.palette.text.primary }}>
-                        <IconX />
-                    </IconButton>
-                </Toolbar>
-            </AppBar>
-            <DialogContent sx={{ p: 0, display: 'flex', height: '100%', overflow: 'hidden' }}>
-                {/* Left Panel: File List */}
+                )}
+                {activeFileId && (
+                    <>
+                        {saving && (
+                            <Typography variant='caption' color='textSecondary'>
+                                Saving…
+                            </Typography>
+                        )}
+                        {dirty && !saving && (
+                            <Typography variant='caption' color='warning.main'>
+                                Unsaved
+                            </Typography>
+                        )}
+                        {!dirty && !saving && (
+                            <Typography variant='caption' color='success.main'>
+                                Saved
+                            </Typography>
+                        )}
+                        <Tooltip title='Delete file'>
+                            <IconButton size='small' onClick={() => deleteFile(activeFileId)} sx={{ color: 'error.main' }}>
+                                <IconTrash size={18} />
+                            </IconButton>
+                        </Tooltip>
+                        <Tooltip title='Save Changes'>
+                            <span>
+                                <Button
+                                    variant='outlined'
+                                    size='small'
+                                    onClick={manualSave}
+                                    disabled={!dirty}
+                                    startIcon={<IconDeviceFloppy size={16} />}
+                                    sx={{ textTransform: 'none' }}
+                                >
+                                    Save
+                                </Button>
+                            </span>
+                        </Tooltip>
+                    </>
+                )}
+                <Button variant='text' size='small' onClick={handleClose} sx={{ textTransform: 'none', ml: 0.5 }}>
+                    Done
+                </Button>
+            </Toolbar>
+
+            {/* Body: File Sidebar + Editor Area */}
+            <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+                {/* Left Sidebar: File List */}
                 <Box
                     sx={{
-                        width: 240,
-                        minWidth: 240,
+                        width: 200,
+                        minWidth: 200,
                         borderRight: 1,
                         borderColor: 'divider',
                         display: 'flex',
@@ -442,13 +482,18 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                         bgcolor: theme.palette.background.default
                     }}
                 >
-                    <Box sx={{ p: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Typography variant='subtitle2' color='textSecondary'>
+                    <Box sx={{ p: 1, px: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Typography
+                            variant='caption'
+                            fontWeight={600}
+                            color='textSecondary'
+                            sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}
+                        >
                             Files
                         </Typography>
                         <Tooltip title='New File'>
                             <IconButton size='small' onClick={createNewFile}>
-                                <IconPlus size={18} />
+                                <IconPlus size={16} />
                             </IconButton>
                         </Tooltip>
                     </Box>
@@ -459,10 +504,10 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                 key={file.id}
                                 selected={file.id === activeFileId}
                                 onClick={() => selectFile(file.id)}
-                                sx={{ py: 0.75 }}
+                                sx={{ py: 0.5 }}
                             >
-                                <ListItemIcon sx={{ minWidth: 28 }}>
-                                    <IconFile size={16} />
+                                <ListItemIcon sx={{ minWidth: 24 }}>
+                                    <IconFile size={14} />
                                 </ListItemIcon>
                                 {renamingFileId === file.id ? (
                                     <TextField
@@ -478,15 +523,16 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                             }
                                             if (e.key === 'Escape') setRenamingFileId(null)
                                         }}
-                                        autoFocus={true}
+                                        // eslint-disable-next-line jsx-a11y/no-autofocus
+                                        autoFocus
                                         fullWidth
-                                        sx={{ '& input': { fontSize: '0.85rem', py: 0 } }}
+                                        sx={{ '& input': { fontSize: '0.8rem', py: 0 } }}
                                     />
                                 ) : (
                                     <ListItemText
                                         primary={
                                             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                                <Typography variant='body2' noWrap sx={{ flex: 1, fontSize: '0.85rem' }}>
+                                                <Typography variant='body2' noWrap sx={{ flex: 1, fontSize: '0.8rem' }}>
                                                     {file.name}
                                                 </Typography>
                                                 {file.id === activeFileId && dirty && (
@@ -522,7 +568,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                         ))}
                         {files.length === 0 && (
                             <Box sx={{ p: 2, textAlign: 'center' }}>
-                                <Typography variant='body2' color='textSecondary'>
+                                <Typography variant='body2' color='textSecondary' sx={{ fontSize: '0.8rem' }}>
                                     No files yet
                                 </Typography>
                             </Box>
@@ -530,7 +576,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                     </List>
                 </Box>
 
-                {/* Right Panel: Editor + Preview */}
+                {/* Right Area: Editor or Preview */}
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     {!activeFileId ? (
                         <Box
@@ -543,40 +589,46 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                 gap: 2
                             }}
                         >
-                            <IconFile size={48} color={theme.palette.text.disabled} />
-                            <Typography color='textSecondary'>
-                                {files.length === 0 ? 'Create a new file to get started' : 'Select a file from the sidebar'}
+                            <IconFile size={40} color={theme.palette.text.disabled} />
+                            <Typography variant='body2' color='textSecondary'>
+                                {files.length === 0 ? 'Create a file to get started' : 'Select a file'}
                             </Typography>
                             {files.length === 0 && (
-                                <Button variant='outlined' startIcon={<IconPlus />} onClick={createNewFile}>
+                                <Button variant='outlined' size='small' startIcon={<IconPlus size={16} />} onClick={createNewFile}>
                                     New File
                                 </Button>
                             )}
                         </Box>
                     ) : (
-                        <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-                            {/* Editor Pane */}
-                            {(viewMode === 'edit' || viewMode === 'split') && (
-                                <StyledEditorWrapper
-                                    sx={{
-                                        borderRight: viewMode === 'split' ? 1 : 0,
-                                        borderColor: 'divider'
-                                    }}
-                                >
+                        <>
+                            {/* View mode toggle */}
+                            <Box sx={{ px: 1.5, py: 0.75, borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center' }}>
+                                <ToggleButtonGroup size='small' value={viewMode} exclusive onChange={(e, v) => v && setViewMode(v)}>
+                                    <ToggleButton value='edit' sx={{ px: 1.5, py: 0.25, textTransform: 'none', fontSize: '0.8rem' }}>
+                                        <IconEdit size={14} style={{ marginRight: 4 }} />
+                                        Source
+                                    </ToggleButton>
+                                    <ToggleButton value='preview' sx={{ px: 1.5, py: 0.25, textTransform: 'none', fontSize: '0.8rem' }}>
+                                        <IconEye size={14} style={{ marginRight: 4 }} />
+                                        Preview
+                                    </ToggleButton>
+                                </ToggleButtonGroup>
+                            </Box>
+
+                            {/* Single pane: editor or preview */}
+                            {viewMode === 'edit' ? (
+                                <StyledEditorWrapper>
                                     <EditorContent editor={editor} style={{ height: '100%' }} />
                                 </StyledEditorWrapper>
-                            )}
-
-                            {/* Preview Pane */}
-                            {(viewMode === 'preview' || viewMode === 'split') && (
+                            ) : (
                                 <MarkdownPreview>
                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{getMarkdownForPreview()}</ReactMarkdown>
                                 </MarkdownPreview>
                             )}
-                        </Box>
+                        </>
                     )}
                 </Box>
-            </DialogContent>
+            </Box>
 
             {/* Context menu for file actions */}
             <Menu
@@ -606,7 +658,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                     Delete
                 </MenuItem>
             </Menu>
-        </Dialog>
+        </Drawer>
     ) : null
 
     return createPortal(component, portalElement)

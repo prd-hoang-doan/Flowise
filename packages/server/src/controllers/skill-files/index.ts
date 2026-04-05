@@ -25,6 +25,8 @@ const createSkillFile = async (req: Request, res: Response, next: NextFunction) 
         const body = req.body
         const fileBody: Record<string, unknown> = {}
         if (body.name !== undefined) fileBody.name = body.name
+        if (body.description !== undefined) fileBody.description = body.description
+        if (body.filename !== undefined) fileBody.filename = body.filename
         if (body.content !== undefined) fileBody.content = body.content
 
         const apiResponse = await skillFilesService.createSkillFile(folderId, fileBody, workspaceId)
@@ -106,6 +108,16 @@ const getSkillFileById = async (req: Request, res: Response, next: NextFunction)
     }
 }
 
+/**
+ * Update a skill file. Only fields provided in the body will be updated
+ * @param req Request object. Expects body to contain any of the following fields: name, description, filename, content
+ * @param req.content the content of the markdown file. This should be a string in markdown format below the front matter
+ * ---
+ * name: marketing_copy_generator
+ * description: Generate marketing copy based on a product description
+ * ---
+ * <content goes here>
+ */
 const updateSkillFile = async (req: Request, res: Response, next: NextFunction) => {
     try {
         if (typeof req.params === 'undefined' || !req.params.id) {
@@ -134,6 +146,8 @@ const updateSkillFile = async (req: Request, res: Response, next: NextFunction) 
         const body = req.body
         const fileBody: Record<string, unknown> = {}
         if (body.name !== undefined) fileBody.name = body.name
+        if (body.description !== undefined) fileBody.description = body.description
+        if (body.filename !== undefined) fileBody.filename = body.filename
         if (body.content !== undefined) fileBody.content = body.content
         const apiResponse = await skillFilesService.updateSkillFile(req.params.id, folderId, fileBody, workspaceId)
         return res.json(apiResponse)
