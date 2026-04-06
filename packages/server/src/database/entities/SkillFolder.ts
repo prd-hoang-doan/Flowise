@@ -19,6 +19,9 @@ export class SkillFolder implements ISkillFolder {
     @Column({ nullable: true, type: 'text' })
     description?: string
 
+    @Column({ nullable: true, type: 'text' })
+    captionModelConfig?: string
+
     @Column({ type: 'timestamp' })
     @CreateDateColumn()
     createdDate: Date

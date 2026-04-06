@@ -13,10 +13,16 @@ const updateSkillAssetCaption = (folderId, assetId, caption) => client.put(`/ski
 
 const deleteSkillAsset = (folderId, assetId) => client.delete(`/skill-folders/${folderId}/assets/${assetId}`)
 
+const regenerateCaption = (folderId, assetId) => client.post(`/skill-folders/${folderId}/assets/${assetId}/regenerate-caption`)
+
+const getChatModels = () => client.get('/assistants/components/chatmodels')
+
 export default {
     uploadSkillAsset,
     getAllSkillAssets,
     getSkillAssetUrl,
     updateSkillAssetCaption,
-    deleteSkillAsset
+    deleteSkillAsset,
+    regenerateCaption,
+    getChatModels
 }

@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom'
+import { cloneDeep } from 'lodash'
 import PropTypes from 'prop-types'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -46,12 +47,21 @@ import {
     IconDeviceFloppy,
     IconChevronRight,
     IconPhoto,
-    IconUpload
+    IconUpload,
+    IconRefresh,
+    IconSettings
 } from '@tabler/icons-react'
+
+// Project imports
+import { Dropdown } from '@/ui-component/dropdown/Dropdown'
+import CaptionModelInputHandler from '@/views/tools/CaptionModelInputHandler'
+import { initNode, showHideInputParams } from '@/utils/genericHelper'
+import { baseURL } from '@/store/constant'
 
 // API
 import skillFilesApi from '@/api/skillfiles'
 import skillAssetsApi from '@/api/skillassets'
+import skillFoldersApi from '@/api/skillfolders'
 
 // Store
 import { HIDE_CANVAS_DIALOG, SHOW_CANVAS_DIALOG } from '@/store/actions'
@@ -178,6 +188,13 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     const [uploadingAsset, setUploadingAsset] = useState(false)
     const fileInputRef = useRef(null)
 
+    // Caption model state
+    const [chatModelsComponents, setChatModelsComponents] = useState([])
+    const [chatModelsOptions, setChatModelsOptions] = useState([])
+    const [selectedCaptionModel, setSelectedCaptionModel] = useState({})
+    const [showCaptionSettings, setShowCaptionSettings] = useState(false)
+    const [regeneratingAssetId, setRegeneratingAssetId] = useState(null)
+
     const editor = useEditor(
         {
             extensions: [
@@ -236,14 +253,48 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
         }
     }, [folder?.id])
 
+    // Load available chat models for captioning
+    const loadChatModels = useCallback(async () => {
+        try {
+            const resp = await skillAssetsApi.getChatModels()
+            if (resp.data) {
+                setChatModelsComponents(resp.data)
+                const options = resp.data.map((chatModel) => ({
+                    label: chatModel.label,
+                    name: chatModel.name,
+                    imageSrc: `${baseURL}/api/v1/node-icon/${chatModel.name}`
+                }))
+                setChatModelsOptions(options)
+            }
+        } catch (err) {
+            console.error('Failed to load chat models:', err)
+        }
+    }, [])
+
+    // Load caption model config from folder
+    const loadCaptionModelConfig = useCallback(() => {
+        if (!folder?.captionModelConfig) {
+            setSelectedCaptionModel({})
+            return
+        }
+        try {
+            const config = JSON.parse(folder.captionModelConfig)
+            setSelectedCaptionModel(config || {})
+        } catch {
+            setSelectedCaptionModel({})
+        }
+    }, [folder?.captionModelConfig])
+
     useEffect(() => {
         if (show && folder?.id) {
             loadFiles()
+            loadChatModels()
+            loadCaptionModelConfig()
             setActiveFileId(null)
             setActiveFileContent('')
             setDirty(false)
         }
-    }, [show, folder?.id, loadFiles])
+    }, [show, folder?.id, loadFiles, loadChatModels, loadCaptionModelConfig])
 
     useEffect(() => {
         if (show) dispatch({ type: SHOW_CANVAS_DIALOG })
@@ -460,6 +511,100 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
             await loadAssets()
         } catch (err) {
             console.error('Failed to update caption:', err)
+        }
+    }
+
+    const handleCaptionModelSelect = (newValue) => {
+        if (!newValue) {
+            setSelectedCaptionModel({})
+        } else {
+            const foundComponent = chatModelsComponents.find((m) => m.name === newValue)
+            if (foundComponent) {
+                const modelId = `${foundComponent.name}_caption`
+                const clonedComponent = cloneDeep(foundComponent)
+                const initModelData = initNode(clonedComponent, modelId)
+                setSelectedCaptionModel(initModelData)
+            }
+        }
+    }
+
+    const handleCaptionModelDataChange = ({ inputParam, newValue }) => {
+        setSelectedCaptionModel((prevData) => {
+            const updatedData = { ...prevData }
+            updatedData.inputs[inputParam.name] = newValue
+            updatedData.inputParams = showHideInputParams(updatedData)
+            return updatedData
+        })
+    }
+
+    const saveCaptionModelConfig = async () => {
+        if (!folder?.id) return
+        try {
+            const configToSave = Object.keys(selectedCaptionModel).length > 0 ? JSON.stringify(selectedCaptionModel) : null
+            await skillFoldersApi.updateSkillFolder(folder.id, { captionModelConfig: configToSave })
+            enqueueSnackbar({
+                message: 'Caption model saved',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'success',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+        } catch (err) {
+            enqueueSnackbar({
+                message: 'Failed to save caption model',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'error',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+        }
+    }
+
+    const handleRegenerateCaption = async (assetId) => {
+        setRegeneratingAssetId(assetId)
+        try {
+            await skillAssetsApi.regenerateCaption(folder.id, assetId)
+            await loadAssets()
+            enqueueSnackbar({
+                message: 'Caption regenerated successfully',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'success',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+        } catch (err) {
+            enqueueSnackbar({
+                message:
+                    typeof err?.response?.data === 'object'
+                        ? err.response.data.message
+                        : err?.response?.data || 'Failed to regenerate caption',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'error',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+        } finally {
+            setRegeneratingAssetId(null)
         }
     }
 
@@ -785,6 +930,89 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                         </Typography>
                                     </Box>
 
+                                    {/* Caption Model Settings */}
+                                    <Box
+                                        sx={{
+                                            border: 1,
+                                            borderColor: 'divider',
+                                            borderRadius: 2,
+                                            mb: 2,
+                                            overflow: 'hidden'
+                                        }}
+                                    >
+                                        <Box
+                                            sx={{
+                                                px: 2,
+                                                py: 1,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                cursor: 'pointer',
+                                                bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                                                '&:hover': {
+                                                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'
+                                                }
+                                            }}
+                                            onClick={() => setShowCaptionSettings(!showCaptionSettings)}
+                                        >
+                                            <IconSettings size={16} style={{ marginRight: 8 }} />
+                                            <Typography variant='body2' sx={{ fontWeight: 500, flex: 1 }}>
+                                                Vision Captioning Model
+                                            </Typography>
+                                            <Typography variant='caption' color='textSecondary'>
+                                                {selectedCaptionModel?.name
+                                                    ? selectedCaptionModel.label || selectedCaptionModel.name
+                                                    : 'Not configured'}
+                                            </Typography>
+                                        </Box>
+                                        {showCaptionSettings && (
+                                            <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'row' }}>
+                                                    <Typography variant='body2'>Select Model</Typography>
+                                                </div>
+                                                <Dropdown
+                                                    key={JSON.stringify(selectedCaptionModel)}
+                                                    name='captionModel'
+                                                    options={chatModelsOptions ?? []}
+                                                    onSelect={handleCaptionModelSelect}
+                                                    value={selectedCaptionModel?.name || 'choose an option'}
+                                                />
+
+                                                {selectedCaptionModel && Object.keys(selectedCaptionModel).length > 0 && (
+                                                    <Box
+                                                        sx={{
+                                                            mt: 1,
+                                                            border: 1,
+                                                            borderColor: theme.palette.grey[900] + 25,
+                                                            borderRadius: 2
+                                                        }}
+                                                    >
+                                                        {showHideInputParams(selectedCaptionModel)
+                                                            .filter((inputParam) => !inputParam.hidden && inputParam.display !== false)
+                                                            .map((inputParam, index) => (
+                                                                <CaptionModelInputHandler
+                                                                    key={index}
+                                                                    inputParam={inputParam}
+                                                                    data={selectedCaptionModel}
+                                                                    onNodeDataChange={handleCaptionModelDataChange}
+                                                                />
+                                                            ))}
+                                                    </Box>
+                                                )}
+
+                                                <Button
+                                                    fullWidth
+                                                    variant='outlined'
+                                                    size='small'
+                                                    onClick={saveCaptionModelConfig}
+                                                    startIcon={<IconDeviceFloppy size={16} />}
+                                                    sx={{ mt: 1.5, textTransform: 'none', borderRadius: 20 }}
+                                                >
+                                                    Save Caption Model
+                                                </Button>
+                                            </Box>
+                                        )}
+                                    </Box>
+
                                     {/* Asset grid */}
                                     {assets.length === 0 ? (
                                         <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -839,7 +1067,27 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                                             }}
                                                             sx={{ mt: 0.5, '& input': { fontSize: '0.75rem' } }}
                                                         />
-                                                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
+                                                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5, gap: 0.5 }}>
+                                                            <Tooltip title='Regenerate caption with vision model'>
+                                                                <span>
+                                                                    <IconButton
+                                                                        size='small'
+                                                                        onClick={() => handleRegenerateCaption(asset.id)}
+                                                                        disabled={regeneratingAssetId === asset.id}
+                                                                        sx={{ color: 'primary.main' }}
+                                                                    >
+                                                                        <IconRefresh
+                                                                            size={14}
+                                                                            style={{
+                                                                                animation:
+                                                                                    regeneratingAssetId === asset.id
+                                                                                        ? 'spin 1s linear infinite'
+                                                                                        : 'none'
+                                                                            }}
+                                                                        />
+                                                                    </IconButton>
+                                                                </span>
+                                                            </Tooltip>
                                                             <Tooltip title='Delete asset'>
                                                                 <IconButton
                                                                     size='small'

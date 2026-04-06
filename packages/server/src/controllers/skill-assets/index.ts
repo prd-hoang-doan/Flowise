@@ -144,10 +144,31 @@ const deleteSkillAsset = async (req: Request, res: Response, next: NextFunction)
     }
 }
 
+const regenerateCaption = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const workspaceId = req.user?.activeWorkspaceId
+        if (!workspaceId) {
+            throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `Error: skillAssetsController.regenerateCaption - workspace not found!`)
+        }
+        const { folderId, assetId } = req.params
+        if (!folderId || !assetId) {
+            throw new InternalFlowiseError(
+                StatusCodes.PRECONDITION_FAILED,
+                `Error: skillAssetsController.regenerateCaption - folderId and assetId are required!`
+            )
+        }
+        const apiResponse = await skillAssetsService.regenerateCaption(assetId, folderId, workspaceId)
+        return res.json(apiResponse)
+    } catch (error) {
+        next(error)
+    }
+}
+
 export default {
     uploadSkillAsset,
     getAllSkillAssets,
     getSkillAsset,
     updateSkillAssetCaption,
-    deleteSkillAsset
+    deleteSkillAsset,
+    regenerateCaption
 }

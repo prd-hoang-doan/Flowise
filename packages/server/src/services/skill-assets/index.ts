@@ -1,6 +1,7 @@
 import { StatusCodes } from 'http-status-codes'
 import path from 'path'
 import fs from 'fs'
+import { ICommonObject } from 'flowise-components'
 import { SkillAsset } from '../../database/entities/SkillAsset'
 import { SkillFile } from '../../database/entities/SkillFile'
 import { SkillFolder } from '../../database/entities/SkillFolder'
@@ -77,6 +78,18 @@ const createSkillAsset = async (folderId: string, fileId: string, file: Express.
             return dbResponse
         }
 
+        // Load folder-level caption model config
+        let captionModelConfig: ICommonObject | null = null
+        try {
+            if (folder.captionModelConfig) {
+                captionModelConfig = JSON.parse(folder.captionModelConfig)
+            }
+        } catch {
+            captionModelConfig = null
+        }
+
+        const caption = await captionService.generateVisionCaption(storagePath, file.mimetype, captionModelConfig)
+
         // Create new asset record
         const newAsset = new SkillAsset()
         newAsset.folderId = folderId
@@ -84,7 +97,7 @@ const createSkillAsset = async (folderId: string, fileId: string, file: Express.
         newAsset.filename = sanitizedFilename
         newAsset.mimeType = file.mimetype
         newAsset.storagePath = storagePath
-        newAsset.caption = captionService.generateFallbackCaption(sanitizedFilename)
+        newAsset.caption = caption
         newAsset.workspaceId = workspaceId
 
         const asset = appServer.AppDataSource.getRepository(SkillAsset).create(newAsset)
@@ -199,11 +212,62 @@ const getAssetsByFileId = async (fileId: string, workspaceId: string): Promise<a
     }
 }
 
+const regenerateCaption = async (assetId: string, folderId: string, workspaceId: string): Promise<any> => {
+    try {
+        const appServer = getRunningExpressApp()
+
+        const asset = await appServer.AppDataSource.getRepository(SkillAsset).findOneBy({
+            id: assetId,
+            folderId,
+            workspaceId
+        })
+        if (!asset) {
+            throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `SkillAsset ${assetId} not found`)
+        }
+
+        const folder = await appServer.AppDataSource.getRepository(SkillFolder).findOneBy({
+            id: folderId,
+            workspaceId
+        })
+        if (!folder) {
+            throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `SkillFolder ${folderId} not found`)
+        }
+
+        let captionModelConfig: ICommonObject | null = null
+        try {
+            if (folder.captionModelConfig) {
+                captionModelConfig = JSON.parse(folder.captionModelConfig)
+            }
+        } catch {
+            captionModelConfig = null
+        }
+
+        if (!captionModelConfig || !captionModelConfig.name) {
+            throw new InternalFlowiseError(
+                StatusCodes.PRECONDITION_FAILED,
+                `No caption model configured for this folder. Please select a vision model in the Assets settings.`
+            )
+        }
+
+        const caption = await captionService.generateVisionCaption(asset.storagePath, asset.mimeType, captionModelConfig)
+        asset.caption = caption
+        const dbResponse = await appServer.AppDataSource.getRepository(SkillAsset).save(asset)
+        return dbResponse
+    } catch (error) {
+        if (error instanceof InternalFlowiseError) throw error
+        throw new InternalFlowiseError(
+            StatusCodes.INTERNAL_SERVER_ERROR,
+            `Error: skillAssetsService.regenerateCaption - ${getErrorMessage(error)}`
+        )
+    }
+}
+
 export default {
     createSkillAsset,
     getAllSkillAssets,
     getSkillAssetById,
     updateSkillAssetCaption,
     deleteSkillAsset,
-    getAssetsByFileId
+    getAssetsByFileId,
+    regenerateCaption
 }

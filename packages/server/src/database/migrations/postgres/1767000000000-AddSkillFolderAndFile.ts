@@ -9,6 +9,7 @@ export class AddSkillFolderAndFile1767000000000 implements MigrationInterface {
                 "color" varchar NOT NULL,
                 "iconSrc" varchar,
                 "description" text,
+                "captionModelConfig" text,
                 "createdDate" timestamp NOT NULL DEFAULT now(),
                 "updatedDate" timestamp NOT NULL DEFAULT now(),
                 "workspaceId" text NOT NULL,

@@ -54,6 +54,13 @@ router.get('/:folderId/assets/:assetId', checkPermission('tools:view'), skillAss
 // UPDATE (caption only)
 router.put('/:folderId/assets/:assetId', checkAnyPermission('tools:update,tools:create'), skillAssetsController.updateSkillAssetCaption)
 
+// REGENERATE CAPTION (vision LLM)
+router.post(
+    '/:folderId/assets/:assetId/regenerate-caption',
+    checkAnyPermission('tools:update,tools:create'),
+    skillAssetsController.regenerateCaption
+)
+
 // DELETE
 router.delete('/:folderId/assets/:assetId', checkPermission('tools:delete'), skillAssetsController.deleteSkillAsset)
 

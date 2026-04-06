@@ -125,6 +125,7 @@ export interface ISkillFolder {
     color: string
     iconSrc?: string
     description?: string
+    captionModelConfig?: string
     updatedDate: Date
     createdDate: Date
     workspaceId: string

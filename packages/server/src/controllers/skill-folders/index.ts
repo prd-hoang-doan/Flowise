@@ -103,6 +103,7 @@ const updateSkillFolder = async (req: Request, res: Response, next: NextFunction
         if (body.color !== undefined) folderBody.color = body.color
         if (body.iconSrc !== undefined) folderBody.iconSrc = body.iconSrc
         if (body.description !== undefined) folderBody.description = body.description
+        if (body.captionModelConfig !== undefined) folderBody.captionModelConfig = body.captionModelConfig
         const apiResponse = await skillFoldersService.updateSkillFolder(req.params.id, folderBody, workspaceId)
         return res.json(apiResponse)
     } catch (error) {
