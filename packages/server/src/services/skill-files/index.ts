@@ -14,18 +14,29 @@ import { getRunningExpressApp } from '../../utils/getRunningExpressApp'
  * ---
  * <content goes here>
  */
-const extractFrontMatter = (content: string): { name?: string; description?: string } => {
+const extractFrontMatter = (content: string): { name?: string; description?: string; assets?: string[] } => {
     const match = content.match(/^---\s*\n([\s\S]*?)\n---/)
     if (!match) return {}
 
     const frontMatter = match[1]
-    const result: { name?: string; description?: string } = {}
+    const result: { name?: string; description?: string; assets?: string[] } = {}
 
     const nameMatch = frontMatter.match(/^name:\s*(.+)$/m)
     if (nameMatch) result.name = nameMatch[1].trim()
 
     const descMatch = frontMatter.match(/^description:\s*(.+)$/m)
     if (descMatch) result.description = descMatch[1].trim()
+
+    // Parse assets list (YAML array format)
+    const assetsMatch = frontMatter.match(/^assets:\s*\n((?:\s+-\s+.+\n?)*)/m)
+    if (assetsMatch) {
+        const assetsBlock = assetsMatch[1]
+        const assets = assetsBlock
+            .split('\n')
+            .map((line: string) => line.replace(/^\s+-\s+/, '').trim())
+            .filter((line: string) => line.length > 0)
+        if (assets.length > 0) result.assets = assets
+    }
 
     return result
 }

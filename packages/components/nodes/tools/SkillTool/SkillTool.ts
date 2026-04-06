@@ -161,16 +161,52 @@ class SkillTool implements INode {
             where: { ...searchOptions, folderId }
         })
 
+        // Load all assets for this folder if SkillAsset entity is available
+        let assetsByFileId: Record<string, any[]> = {}
+        if (databaseEntities?.['SkillAsset']) {
+            try {
+                const assets = await appDataSource.getRepository(databaseEntities['SkillAsset']).find({
+                    where: { ...searchOptions, folderId }
+                })
+                for (const asset of assets) {
+                    if (!assetsByFileId[asset.fileId]) {
+                        assetsByFileId[asset.fileId] = []
+                    }
+                    assetsByFileId[asset.fileId].push(asset)
+                }
+            } catch {
+                // SkillAsset table may not exist yet (pre-migration); gracefully degrade
+            }
+        }
+
         return files.map((file: any) => {
             const toolName = this.formatToolName(file.name)
+            const compiledContent = this.compileSkillContent(file.content || '', assetsByFileId[file.id] || [])
             const tool = new SkillFileTool({
                 name: toolName,
                 description: file.description || `Skill: ${file.name}`,
-                content: file.content || ''
+                content: compiledContent
             })
             ;(tool as any).fileId = file.id
             return tool
         })
+    }
+
+    /**
+     * Compile skill content by stripping front matter and appending asset captions as visual context.
+     */
+    private compileSkillContent(rawContent: string, assets: any[]): string {
+        // Strip front matter
+        let body = rawContent.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, '').trim()
+
+        // If there are assets with captions, append visual context
+        const captions = assets.filter((a: any) => a.caption && a.caption.trim()).map((a: any) => a.caption.trim())
+
+        if (captions.length > 0) {
+            body += '\n\nVisual Context:\n' + captions.map((c: string) => `- ${c}`).join('\n')
+        }
+
+        return body
     }
 
     private formatToolName = (name: string): string => name.trim().replace(/[^a-zA-Z0-9_-]/g, '_')

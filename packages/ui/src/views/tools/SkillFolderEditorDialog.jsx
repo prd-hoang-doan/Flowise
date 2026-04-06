@@ -44,11 +44,14 @@ import {
     IconPencil,
     IconDotsVertical,
     IconDeviceFloppy,
-    IconChevronRight
+    IconChevronRight,
+    IconPhoto,
+    IconUpload
 } from '@tabler/icons-react'
 
 // API
 import skillFilesApi from '@/api/skillfiles'
+import skillAssetsApi from '@/api/skillassets'
 
 // Store
 import { HIDE_CANVAS_DIALOG, SHOW_CANVAS_DIALOG } from '@/store/actions'
@@ -171,6 +174,9 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     const [renameValue, setRenameValue] = useState('')
     const saveTimerRef = useRef(null)
     const [saving, setSaving] = useState(false)
+    const [assets, setAssets] = useState([])
+    const [uploadingAsset, setUploadingAsset] = useState(false)
+    const fileInputRef = useRef(null)
 
     const editor = useEditor(
         {
@@ -361,6 +367,99 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
             return editor.getMarkdown() || ''
         } catch {
             return ''
+        }
+    }
+
+    // === Asset Management ===
+    const loadAssets = useCallback(async () => {
+        if (!folder?.id || !activeFileId) {
+            setAssets([])
+            return
+        }
+        try {
+            const resp = await skillAssetsApi.getAllSkillAssets(folder.id, activeFileId)
+            setAssets(resp.data || [])
+        } catch (err) {
+            console.error('Failed to load assets:', err)
+            setAssets([])
+        }
+    }, [folder?.id, activeFileId])
+
+    useEffect(() => {
+        if (activeFileId && viewMode === 'assets') {
+            loadAssets()
+        }
+    }, [activeFileId, viewMode, loadAssets])
+
+    const handleAssetUpload = async (event) => {
+        const uploadedFiles = event.target.files
+        if (!uploadedFiles || uploadedFiles.length === 0 || !folder?.id || !activeFileId) return
+
+        setUploadingAsset(true)
+        try {
+            for (const file of uploadedFiles) {
+                const formData = new FormData()
+                formData.append('files', file)
+                await skillAssetsApi.uploadSkillAsset(folder.id, activeFileId, formData)
+            }
+            await loadAssets()
+            enqueueSnackbar({
+                message: 'Asset uploaded successfully',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'success',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+        } catch (err) {
+            enqueueSnackbar({
+                message: 'Failed to upload asset',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'error',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+        } finally {
+            setUploadingAsset(false)
+            if (fileInputRef.current) fileInputRef.current.value = ''
+        }
+    }
+
+    const handleDeleteAsset = async (assetId) => {
+        try {
+            await skillAssetsApi.deleteSkillAsset(folder.id, assetId)
+            await loadAssets()
+        } catch (err) {
+            enqueueSnackbar({
+                message: 'Failed to delete asset',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'error',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+        }
+    }
+
+    const handleCaptionUpdate = async (assetId, caption) => {
+        try {
+            await skillAssetsApi.updateSkillAssetCaption(folder.id, assetId, caption)
+            await loadAssets()
+        } catch (err) {
+            console.error('Failed to update caption:', err)
         }
     }
 
@@ -612,18 +711,151 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                         <IconEye size={14} style={{ marginRight: 4 }} />
                                         Preview
                                     </ToggleButton>
+                                    <ToggleButton value='assets' sx={{ px: 1.5, py: 0.25, textTransform: 'none', fontSize: '0.8rem' }}>
+                                        <IconPhoto size={14} style={{ marginRight: 4 }} />
+                                        Assets
+                                        {assets.length > 0 && (
+                                            <Box
+                                                component='span'
+                                                sx={{
+                                                    ml: 0.5,
+                                                    px: 0.5,
+                                                    py: 0,
+                                                    fontSize: '0.7rem',
+                                                    borderRadius: '8px',
+                                                    bgcolor: 'primary.main',
+                                                    color: 'primary.contrastText',
+                                                    lineHeight: 1.5
+                                                }}
+                                            >
+                                                {assets.length}
+                                            </Box>
+                                        )}
+                                    </ToggleButton>
                                 </ToggleButtonGroup>
                             </Box>
 
-                            {/* Single pane: editor or preview */}
+                            {/* Single pane: editor, preview, or assets */}
                             {viewMode === 'edit' ? (
                                 <StyledEditorWrapper>
                                     <EditorContent editor={editor} style={{ height: '100%' }} />
                                 </StyledEditorWrapper>
-                            ) : (
+                            ) : viewMode === 'preview' ? (
                                 <MarkdownPreview>
                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{getMarkdownForPreview()}</ReactMarkdown>
                                 </MarkdownPreview>
+                            ) : (
+                                <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+                                    {/* Upload area */}
+                                    <Box
+                                        sx={{
+                                            border: '2px dashed',
+                                            borderColor: 'divider',
+                                            borderRadius: 2,
+                                            p: 3,
+                                            textAlign: 'center',
+                                            cursor: 'pointer',
+                                            mb: 2,
+                                            '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' }
+                                        }}
+                                        onClick={() => fileInputRef.current?.click()}
+                                        onDragOver={(e) => e.preventDefault()}
+                                        onDrop={(e) => {
+                                            e.preventDefault()
+                                            const dt = e.dataTransfer
+                                            if (dt.files?.length) {
+                                                handleAssetUpload({ target: { files: dt.files } })
+                                            }
+                                        }}
+                                    >
+                                        <input
+                                            ref={fileInputRef}
+                                            type='file'
+                                            accept='image/png,image/jpeg,image/gif,image/webp'
+                                            multiple
+                                            style={{ display: 'none' }}
+                                            onChange={handleAssetUpload}
+                                        />
+                                        <IconUpload size={32} color={theme.palette.text.secondary} />
+                                        <Typography variant='body2' color='textSecondary' sx={{ mt: 1 }}>
+                                            {uploadingAsset ? 'Uploading…' : 'Drop images here or click to upload'}
+                                        </Typography>
+                                        <Typography variant='caption' color='textSecondary'>
+                                            PNG, JPEG, GIF, WebP
+                                        </Typography>
+                                    </Box>
+
+                                    {/* Asset grid */}
+                                    {assets.length === 0 ? (
+                                        <Box sx={{ textAlign: 'center', py: 4 }}>
+                                            <Typography variant='body2' color='textSecondary'>
+                                                No assets yet. Upload images to enrich this skill.
+                                            </Typography>
+                                        </Box>
+                                    ) : (
+                                        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 2 }}>
+                                            {assets.map((asset) => (
+                                                <Box
+                                                    key={asset.id}
+                                                    sx={{
+                                                        border: 1,
+                                                        borderColor: 'divider',
+                                                        borderRadius: 1,
+                                                        overflow: 'hidden',
+                                                        bgcolor: theme.palette.background.default
+                                                    }}
+                                                >
+                                                    <Box
+                                                        sx={{
+                                                            height: 120,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            bgcolor: theme.palette.mode === 'dark' ? '#1a1a1a' : '#fafafa',
+                                                            overflow: 'hidden'
+                                                        }}
+                                                    >
+                                                        <Box
+                                                            component='img'
+                                                            src={skillAssetsApi.getSkillAssetUrl(folder.id, asset.id)}
+                                                            alt={asset.filename}
+                                                            sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                                                        />
+                                                    </Box>
+                                                    <Box sx={{ p: 1 }}>
+                                                        <Typography variant='caption' noWrap sx={{ fontWeight: 500 }}>
+                                                            {asset.filename}
+                                                        </Typography>
+                                                        <TextField
+                                                            size='small'
+                                                            variant='standard'
+                                                            fullWidth
+                                                            placeholder='Caption…'
+                                                            defaultValue={asset.caption || ''}
+                                                            onBlur={(e) => {
+                                                                if (e.target.value !== (asset.caption || '')) {
+                                                                    handleCaptionUpdate(asset.id, e.target.value)
+                                                                }
+                                                            }}
+                                                            sx={{ mt: 0.5, '& input': { fontSize: '0.75rem' } }}
+                                                        />
+                                                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
+                                                            <Tooltip title='Delete asset'>
+                                                                <IconButton
+                                                                    size='small'
+                                                                    onClick={() => handleDeleteAsset(asset.id)}
+                                                                    sx={{ color: 'error.main' }}
+                                                                >
+                                                                    <IconTrash size={14} />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        </Box>
+                                                    </Box>
+                                                </Box>
+                                            ))}
+                                        </Box>
+                                    )}
+                                </Box>
                             )}
                         </>
                     )}

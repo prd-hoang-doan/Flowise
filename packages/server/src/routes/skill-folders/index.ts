@@ -1,7 +1,9 @@
 import express from 'express'
 import skillFoldersController from '../../controllers/skill-folders'
 import skillFilesController from '../../controllers/skill-files'
+import skillAssetsController from '../../controllers/skill-assets'
 import { checkAnyPermission, checkPermission } from '../../enterprise/rbac/PermissionCheck'
+import { getMulterStorage } from '../../utils'
 
 const router = express.Router()
 
@@ -34,5 +36,25 @@ router.put('/:folderId/files/:id', checkAnyPermission('tools:update,tools:create
 
 // DELETE
 router.delete('/:folderId/files/:id', checkPermission('tools:delete'), skillFilesController.deleteSkillFile)
+
+// === Skill Assets (nested under folders/files) ===
+
+// UPLOAD
+router.post(
+    '/:folderId/files/:fileId/assets',
+    checkPermission('tools:create'),
+    getMulterStorage().array('files'),
+    skillAssetsController.uploadSkillAsset
+)
+
+// READ
+router.get('/:folderId/files/:fileId/assets', checkPermission('tools:view'), skillAssetsController.getAllSkillAssets)
+router.get('/:folderId/assets/:assetId', checkPermission('tools:view'), skillAssetsController.getSkillAsset)
+
+// UPDATE (caption only)
+router.put('/:folderId/assets/:assetId', checkAnyPermission('tools:update,tools:create'), skillAssetsController.updateSkillAssetCaption)
+
+// DELETE
+router.delete('/:folderId/assets/:assetId', checkPermission('tools:delete'), skillAssetsController.deleteSkillAsset)
 
 export default router

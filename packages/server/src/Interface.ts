@@ -142,6 +142,19 @@ export interface ISkillFile {
     workspaceId: string
 }
 
+export interface ISkillAsset {
+    id: string
+    folderId: string
+    fileId: string
+    filename: string
+    mimeType: string
+    storagePath: string
+    caption?: string
+    updatedDate: Date
+    createdDate: Date
+    workspaceId: string
+}
+
 export interface IAssistant {
     id: string
     details: string
