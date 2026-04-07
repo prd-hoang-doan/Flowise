@@ -2232,7 +2232,7 @@ class Agent_Agentflow implements INode {
             response.tool_calls.splice(response.tool_calls.indexOf(toolCall), 1)
         }
 
-        // Add LLM response with tool calls to messages
+        // Add LLM response with tool calls to messages (**important**: this ensures that the full context is available for subsequent tool calls, especially in recursive scenarios)
         messages.push({
             id: response.id,
             role: 'assistant',
@@ -2241,11 +2241,16 @@ class Agent_Agentflow implements INode {
             usage_metadata: response.usage_metadata
         })
 
+        // Collect image parts from multimodal tool outputs; they must be injected as
+        // a user message because LLM APIs do not allow image_url in tool messages.
+        const pendingMultimodalImageParts: any[] = []
+
         // Process each tool call
         for (let i = 0; i < response.tool_calls.length; i++) {
             const toolCall = response.tool_calls[i]
 
             const selectedTool = toolsInstance.find((tool) => tool.name === toolCall.name)
+            console.log(`selectedTool for tool call ${toolCall.name}:`, selectedTool)
             if (selectedTool) {
                 let parsedDocs
                 let parsedArtifacts
@@ -2285,6 +2290,7 @@ class Agent_Agentflow implements INode {
                 }
 
                 try {
+                    console.log(`Invoking tool ${toolCall.name} with args:`, toolCall.args, 'and flowConfig:', flowConfig)
                     //@ts-ignore
                     let toolOutput = await selectedTool.call(toolCall.args, { signal: abortController?.signal }, undefined, flowConfig)
 
@@ -2327,10 +2333,34 @@ class Agent_Agentflow implements INode {
                         }
                     }
 
-                    // Add tool message to conversation
+                    // Detect multimodal content from tools (e.g. SkillTool in multimodal mode).
+                    // Tool messages only get text; image_url parts are collected and injected
+                    // as a follow-up user message (LLM APIs reject images in tool messages).
+                    let toolMessageContent: string = toolOutput
+                    let toolOutputForTracking: string = toolOutput
+                    if (typeof toolOutput === 'string' && toolOutput.startsWith('{"__multimodal"')) {
+                        try {
+                            const parsed = JSON.parse(toolOutput)
+                            if (parsed.__multimodal && Array.isArray(parsed.content)) {
+                                const textParts = parsed.content.filter((p: any) => p.type === 'text')
+                                const imageParts = parsed.content.filter((p: any) => p.type === 'image_url')
+
+                                toolMessageContent = textParts.map((p: any) => p.text).join('\n')
+                                toolOutputForTracking = toolMessageContent
+                                if (imageParts.length > 0) {
+                                    pendingMultimodalImageParts.push(...imageParts)
+                                    toolOutputForTracking += `\n[${imageParts.length} image(s) included as multimodal content]`
+                                }
+                            }
+                        } catch {
+                            // Not valid multimodal JSON, use toolOutput as-is
+                        }
+                    }
+
+                    // Add tool message to conversation (text only)
                     messages.push({
                         role: 'tool',
-                        content: toolOutput,
+                        content: toolMessageContent,
                         tool_call_id: toolCall.id,
                         name: toolCall.name,
                         additional_kwargs: {
@@ -2339,11 +2369,11 @@ class Agent_Agentflow implements INode {
                         }
                     })
 
-                    // Track used tools
+                    // Track used tools (text summary only, no base64 data)
                     usedTools.push({
                         tool: toolCall.name,
                         toolInput: toolInput ?? toolCall.args,
-                        toolOutput
+                        toolOutput: toolOutputForTracking
                     })
                 } catch (e) {
                     if (options.analyticHandlers && toolIds) {
@@ -2372,6 +2402,15 @@ class Agent_Agentflow implements INode {
                     throw new Error(getErrorMessage(e))
                 }
             }
+        }
+
+        // Inject multimodal images as a user message after all tool messages.
+        // LLM APIs require image_url parts in user messages, not tool messages.
+        if (pendingMultimodalImageParts.length > 0) {
+            messages.push({
+                role: 'user',
+                content: [{ type: 'text', text: 'Here are the referenced images from the skill assets:' }, ...pendingMultimodalImageParts]
+            })
         }
 
         // Return direct tool output if there's exactly one tool with returnDirect
