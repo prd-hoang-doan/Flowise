@@ -30,7 +30,10 @@ import {
     Menu,
     MenuItem,
     Tooltip,
-    Toolbar
+    Toolbar,
+    Chip,
+    Collapse,
+    CircularProgress
 } from '@mui/material'
 import { useTheme, styled } from '@mui/material/styles'
 
@@ -49,7 +52,10 @@ import {
     IconPhoto,
     IconUpload,
     IconRefresh,
-    IconSettings
+    IconSettings,
+    IconCode,
+    IconHash,
+    IconFileAnalytics
 } from '@tabler/icons-react'
 
 // Project imports
@@ -195,6 +201,11 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     const [showCaptionSettings, setShowCaptionSettings] = useState(false)
     const [regeneratingAssetId, setRegeneratingAssetId] = useState(null)
 
+    // Compile preview state
+    const [compilePreview, setCompilePreview] = useState(null)
+    const [compilePreviewLoading, setCompilePreviewLoading] = useState(false)
+    const [compiledPromptExpanded, setCompiledPromptExpanded] = useState(false)
+
     const editor = useEditor(
         {
             extensions: [
@@ -284,6 +295,29 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
             setSelectedCaptionModel({})
         }
     }, [folder?.captionModelConfig])
+
+    const loadCompilePreview = useCallback(async () => {
+        if (!folder?.id || !activeFileId) {
+            setCompilePreview(null)
+            return
+        }
+        setCompilePreviewLoading(true)
+        try {
+            const resp = await skillFilesApi.getCompilePreview(folder.id, activeFileId)
+            setCompilePreview(resp.data || null)
+        } catch (err) {
+            console.error('Failed to load compile preview:', err)
+            setCompilePreview(null)
+        } finally {
+            setCompilePreviewLoading(false)
+        }
+    }, [folder?.id, activeFileId])
+
+    useEffect(() => {
+        if (activeFileId && viewMode === 'summary') {
+            loadCompilePreview()
+        }
+    }, [activeFileId, viewMode, loadCompilePreview])
 
     useEffect(() => {
         if (show && folder?.id) {
@@ -877,10 +911,14 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                             </Box>
                                         )}
                                     </ToggleButton>
+                                    <ToggleButton value='summary' sx={{ px: 1.5, py: 0.25, textTransform: 'none', fontSize: '0.8rem' }}>
+                                        <IconFileAnalytics size={14} style={{ marginRight: 4 }} />
+                                        Summary
+                                    </ToggleButton>
                                 </ToggleButtonGroup>
                             </Box>
 
-                            {/* Single pane: editor, preview, or assets */}
+                            {/* Single pane: editor, preview, summary, or assets */}
                             {viewMode === 'edit' ? (
                                 <StyledEditorWrapper>
                                     <EditorContent editor={editor} style={{ height: '100%' }} />
@@ -889,6 +927,255 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                 <MarkdownPreview>
                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{getMarkdownForPreview()}</ReactMarkdown>
                                 </MarkdownPreview>
+                            ) : viewMode === 'summary' ? (
+                                <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+                                    {compilePreviewLoading ? (
+                                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 6 }}>
+                                            <CircularProgress size={28} />
+                                            <Typography variant='body2' color='textSecondary' sx={{ ml: 1.5 }}>
+                                                Compiling...
+                                            </Typography>
+                                        </Box>
+                                    ) : !compilePreview ? (
+                                        <Box sx={{ textAlign: 'center', py: 6 }}>
+                                            <IconFileAnalytics size={40} color={theme.palette.text.disabled} />
+                                            <Typography variant='body2' color='textSecondary' sx={{ mt: 1 }}>
+                                                No compile preview available
+                                            </Typography>
+                                            <Button
+                                                variant='outlined'
+                                                size='small'
+                                                startIcon={<IconRefresh size={16} />}
+                                                onClick={loadCompilePreview}
+                                                sx={{ mt: 1.5, textTransform: 'none' }}
+                                            >
+                                                Compile Now
+                                            </Button>
+                                        </Box>
+                                    ) : (
+                                        <>
+                                            {/* Header + Refresh */}
+                                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                                                <Typography variant='subtitle2' sx={{ flex: 1, fontWeight: 600 }}>
+                                                    Compiled Skill Summary
+                                                </Typography>
+                                                <Tooltip title='Re-compile'>
+                                                    <IconButton size='small' onClick={loadCompilePreview}>
+                                                        <IconRefresh size={16} />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            </Box>
+
+                                            {/* Metadata cards */}
+                                            <Box
+                                                sx={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                                                    gap: 1.5,
+                                                    mb: 2
+                                                }}
+                                            >
+                                                {/* Skill Name */}
+                                                <Box
+                                                    sx={{
+                                                        border: 1,
+                                                        borderColor: 'divider',
+                                                        borderRadius: 1.5,
+                                                        p: 1.5,
+                                                        bgcolor:
+                                                            theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
+                                                    }}
+                                                >
+                                                    <Typography variant='caption' color='textSecondary' sx={{ fontWeight: 500 }}>
+                                                        Skill Name
+                                                    </Typography>
+                                                    <Typography variant='body2' sx={{ fontWeight: 600, mt: 0.25, wordBreak: 'break-all' }}>
+                                                        {compilePreview.metadata?.skillName || '—'}
+                                                    </Typography>
+                                                </Box>
+                                                {/* Execution Mode */}
+                                                <Box
+                                                    sx={{
+                                                        border: 1,
+                                                        borderColor: 'divider',
+                                                        borderRadius: 1.5,
+                                                        p: 1.5,
+                                                        bgcolor:
+                                                            theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
+                                                    }}
+                                                >
+                                                    <Typography variant='caption' color='textSecondary' sx={{ fontWeight: 500 }}>
+                                                        Execution Mode
+                                                    </Typography>
+                                                    <Typography
+                                                        variant='body2'
+                                                        sx={{ fontWeight: 600, mt: 0.25, textTransform: 'capitalize' }}
+                                                    >
+                                                        {compilePreview.metadata?.executionMode || 'summary'}
+                                                    </Typography>
+                                                </Box>
+                                                {/* Token Estimate */}
+                                                <Box
+                                                    sx={{
+                                                        border: 1,
+                                                        borderColor: 'divider',
+                                                        borderRadius: 1.5,
+                                                        p: 1.5,
+                                                        bgcolor:
+                                                            theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
+                                                    }}
+                                                >
+                                                    <Typography variant='caption' color='textSecondary' sx={{ fontWeight: 500 }}>
+                                                        Token Estimate
+                                                    </Typography>
+                                                    <Typography variant='body2' sx={{ fontWeight: 600, mt: 0.25 }}>
+                                                        ~{compilePreview.tokenEstimate?.toLocaleString() || 0}
+                                                    </Typography>
+                                                </Box>
+                                                {/* File Count */}
+                                                <Box
+                                                    sx={{
+                                                        border: 1,
+                                                        borderColor: 'divider',
+                                                        borderRadius: 1.5,
+                                                        p: 1.5,
+                                                        bgcolor:
+                                                            theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
+                                                    }}
+                                                >
+                                                    <Typography variant='caption' color='textSecondary' sx={{ fontWeight: 500 }}>
+                                                        Total Files
+                                                    </Typography>
+                                                    <Typography variant='body2' sx={{ fontWeight: 600, mt: 0.25 }}>
+                                                        {compilePreview.metadata?.fileCount || 0}
+                                                    </Typography>
+                                                </Box>
+                                            </Box>
+
+                                            {/* Sections present */}
+                                            {compilePreview.metadata?.sections?.length > 0 && (
+                                                <Box sx={{ mb: 2 }}>
+                                                    <Typography
+                                                        variant='caption'
+                                                        color='textSecondary'
+                                                        sx={{ fontWeight: 500, display: 'block', mb: 0.75 }}
+                                                    >
+                                                        Compiled Sections
+                                                    </Typography>
+                                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                                                        {compilePreview.metadata.sections.map((section) => (
+                                                            <Chip
+                                                                key={section}
+                                                                label={section}
+                                                                size='small'
+                                                                variant='outlined'
+                                                                sx={{ textTransform: 'capitalize', fontSize: '0.75rem' }}
+                                                            />
+                                                        ))}
+                                                    </Box>
+                                                </Box>
+                                            )}
+
+                                            {/* Asset breakdown */}
+                                            {compilePreview.metadata?.assetSummary?.length > 0 && (
+                                                <Box sx={{ mb: 2 }}>
+                                                    <Typography
+                                                        variant='caption'
+                                                        color='textSecondary'
+                                                        sx={{ fontWeight: 500, display: 'block', mb: 0.75 }}
+                                                    >
+                                                        Asset Breakdown
+                                                    </Typography>
+                                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                                                        {compilePreview.metadata.assetSummary.map((item) => (
+                                                            <Chip
+                                                                key={item.category}
+                                                                label={`${item.category}: ${item.count}`}
+                                                                size='small'
+                                                                color='primary'
+                                                                variant='outlined'
+                                                                sx={{ fontSize: '0.75rem' }}
+                                                            />
+                                                        ))}
+                                                    </Box>
+                                                </Box>
+                                            )}
+
+                                            {/* Compile hash */}
+                                            {compilePreview.hash && (
+                                                <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                                    <IconHash size={14} color={theme.palette.text.secondary} />
+                                                    <Typography variant='caption' color='textSecondary' sx={{ fontFamily: 'monospace' }}>
+                                                        {compilePreview.hash}
+                                                    </Typography>
+                                                </Box>
+                                            )}
+
+                                            {/* Compiled prompt preview */}
+                                            <Box
+                                                sx={{
+                                                    border: 1,
+                                                    borderColor: 'divider',
+                                                    borderRadius: 1.5,
+                                                    overflow: 'hidden'
+                                                }}
+                                            >
+                                                <Box
+                                                    sx={{
+                                                        px: 2,
+                                                        py: 1,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        cursor: 'pointer',
+                                                        bgcolor:
+                                                            theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                                                        '&:hover': {
+                                                            bgcolor:
+                                                                theme.palette.mode === 'dark'
+                                                                    ? 'rgba(255,255,255,0.05)'
+                                                                    : 'rgba(0,0,0,0.04)'
+                                                        }
+                                                    }}
+                                                    onClick={() => setCompiledPromptExpanded(!compiledPromptExpanded)}
+                                                >
+                                                    <IconCode size={16} style={{ marginRight: 8 }} />
+                                                    <Typography variant='body2' sx={{ fontWeight: 500, flex: 1 }}>
+                                                        Compiled Prompt
+                                                    </Typography>
+                                                    <Typography variant='caption' color='textSecondary'>
+                                                        {compiledPromptExpanded ? 'Collapse' : 'Expand'}
+                                                    </Typography>
+                                                </Box>
+                                                <Collapse in={compiledPromptExpanded}>
+                                                    <Box
+                                                        sx={{
+                                                            p: 2,
+                                                            borderTop: 1,
+                                                            borderColor: 'divider',
+                                                            bgcolor: theme.palette.mode === 'dark' ? '#1a1a1a' : '#fafafa',
+                                                            maxHeight: 400,
+                                                            overflow: 'auto'
+                                                        }}
+                                                    >
+                                                        <Typography
+                                                            variant='body2'
+                                                            component='pre'
+                                                            sx={{
+                                                                fontFamily: 'monospace',
+                                                                fontSize: '0.8rem',
+                                                                whiteSpace: 'pre-wrap',
+                                                                wordBreak: 'break-word',
+                                                                m: 0
+                                                            }}
+                                                        >
+                                                            {compilePreview.compiledPrompt || '(empty)'}
+                                                        </Typography>
+                                                    </Box>
+                                                </Collapse>
+                                            </Box>
+                                        </>
+                                    )}
+                                </Box>
                             ) : (
                                 <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
                                     {/* Upload area */}

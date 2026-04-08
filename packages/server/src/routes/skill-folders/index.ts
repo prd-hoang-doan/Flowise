@@ -31,6 +31,9 @@ router.post('/:folderId/files', checkPermission('tools:create'), skillFilesContr
 router.get('/:folderId/files', checkPermission('tools:view'), skillFilesController.getAllSkillFiles)
 router.get('/:folderId/files/:id', checkPermission('tools:view'), skillFilesController.getSkillFileById)
 
+// COMPILE PREVIEW
+router.get('/:folderId/files/:id/compile-preview', checkPermission('tools:view'), skillFilesController.compilePreview)
+
 // UPDATE
 router.put('/:folderId/files/:id', checkAnyPermission('tools:update,tools:create'), skillFilesController.updateSkillFile)
 

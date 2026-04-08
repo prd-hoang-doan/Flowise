@@ -156,10 +156,40 @@ const updateSkillFile = async (req: Request, res: Response, next: NextFunction) 
     }
 }
 
+const compilePreview = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (typeof req.params === 'undefined' || !req.params.id) {
+            throw new InternalFlowiseError(StatusCodes.PRECONDITION_FAILED, `Error: skillFilesController.compilePreview - id not provided!`)
+        }
+        const workspaceId = req.user?.activeWorkspaceId
+        if (!workspaceId) {
+            throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `Error: skillFilesController.compilePreview - workspace not found!`)
+        }
+        const folderId = req.params.folderId
+        if (!folderId) {
+            throw new InternalFlowiseError(
+                StatusCodes.PRECONDITION_FAILED,
+                `Error: skillFilesController.compilePreview - folderId not provided!`
+            )
+        }
+        const config = {
+            executionMode: req.query.executionMode as string | undefined,
+            maxAssetContext: req.query.maxAssetContext ? parseInt(req.query.maxAssetContext as string, 10) : undefined,
+            maxMultimodalAssets: req.query.maxMultimodalAssets ? parseInt(req.query.maxMultimodalAssets as string, 10) : undefined,
+            maxDocumentChars: req.query.maxDocumentChars ? parseInt(req.query.maxDocumentChars as string, 10) : undefined
+        }
+        const apiResponse = await skillFilesService.compilePreview(req.params.id, folderId, workspaceId, config)
+        return res.json(apiResponse)
+    } catch (error) {
+        next(error)
+    }
+}
+
 export default {
     createSkillFile,
     deleteSkillFile,
     getAllSkillFiles,
     getSkillFileById,
-    updateSkillFile
+    updateSkillFile,
+    compilePreview
 }

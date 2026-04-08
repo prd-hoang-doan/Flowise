@@ -1,6 +1,8 @@
 import { StatusCodes } from 'http-status-codes'
 import { SkillFile } from '../../database/entities/SkillFile'
 import { SkillFolder } from '../../database/entities/SkillFolder'
+import { SkillAsset } from '../../database/entities/SkillAsset'
+import { SkillCompiler } from 'flowise-components'
 import { InternalFlowiseError } from '../../errors/internalFlowiseError'
 import { getErrorMessage } from '../../errors/utils'
 import { getRunningExpressApp } from '../../utils/getRunningExpressApp'
@@ -174,10 +176,78 @@ const updateSkillFile = async (fileId: string, folderId: string, fileBody: any, 
     }
 }
 
+const compilePreview = async (
+    fileId: string,
+    folderId: string,
+    workspaceId: string,
+    config?: { executionMode?: string; maxAssetContext?: number; maxMultimodalAssets?: number; maxDocumentChars?: number }
+): Promise<any> => {
+    try {
+        const appServer = getRunningExpressApp()
+        const folder = await appServer.AppDataSource.getRepository(SkillFolder).findOneBy({
+            id: folderId,
+            workspaceId
+        })
+        if (!folder) {
+            throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `SkillFolder ${folderId} not found`)
+        }
+
+        const file = await appServer.AppDataSource.getRepository(SkillFile).findOneBy({
+            id: fileId,
+            folderId,
+            workspaceId
+        })
+        if (!file) {
+            throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `SkillFile ${fileId} not found`)
+        }
+
+        const allFiles = await appServer.AppDataSource.getRepository(SkillFile).find({
+            where: { folderId, workspaceId }
+        })
+
+        let assets: any[] = []
+        try {
+            assets = await appServer.AppDataSource.getRepository(SkillAsset).find({
+                where: { folderId, fileId, workspaceId }
+            })
+        } catch {
+            // SkillAsset table may not exist yet
+        }
+
+        const compiler = new SkillCompiler()
+        const output = compiler.compile(
+            { id: folder.id, name: folder.name, description: folder.description },
+            { id: file.id, name: file.name, description: file.description, content: file.content },
+            assets,
+            {
+                executionMode: (config?.executionMode as 'summary' | 'multimodal') || 'summary',
+                maxAssetContext: config?.maxAssetContext ?? 2000,
+                maxMultimodalAssets: config?.maxMultimodalAssets ?? 5,
+                maxDocumentChars: config?.maxDocumentChars ?? 5000
+            },
+            allFiles.length
+        )
+
+        return {
+            metadata: output.metadata,
+            compiledPrompt: output.compiledPrompt,
+            tokenEstimate: output.tokenEstimate,
+            hash: output.hash
+        }
+    } catch (error) {
+        if (error instanceof InternalFlowiseError) throw error
+        throw new InternalFlowiseError(
+            StatusCodes.INTERNAL_SERVER_ERROR,
+            `Error: skillFilesService.compilePreview - ${getErrorMessage(error)}`
+        )
+    }
+}
+
 export default {
     createSkillFile,
     deleteSkillFile,
     getAllSkillFiles,
     getSkillFileById,
-    updateSkillFile
+    updateSkillFile,
+    compilePreview
 }

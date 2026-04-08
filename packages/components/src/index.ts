@@ -18,3 +18,11 @@ export * from './agentflowv2Generator'
 export * from './httpSecurity'
 export * from './pythonCodeValidator'
 export { MCPToolkit } from '../nodes/tools/MCP/core'
+export { SkillCompiler } from '../nodes/tools/SkillTool/compiler/SkillCompiler'
+export type {
+    CompiledSkillOutput,
+    SkillMetadata,
+    CompileConfig,
+    SkillFileInput,
+    SkillAssetInput
+} from '../nodes/tools/SkillTool/compiler/types'

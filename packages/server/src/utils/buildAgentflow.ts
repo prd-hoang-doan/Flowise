@@ -1208,7 +1208,7 @@ const executeNode = async ({
             evaluationRunId
         }
 
-        // Execute node
+        // Execute node (**important**: this is where the node's main logic is executed)
         let results = await newNodeInstance.run(reactFlowNodeData, finalInput, runParams)
 
         // Handle iteration node with recursive execution
