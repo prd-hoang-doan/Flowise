@@ -138,6 +138,7 @@ export interface ISkillFile {
     description?: string
     filename?: string
     content?: string
+    compileHash?: string
     updatedDate: Date
     createdDate: Date
     workspaceId: string
@@ -152,6 +153,46 @@ export interface ISkillAsset {
     storagePath: string
     caption?: string
     updatedDate: Date
+    createdDate: Date
+    workspaceId: string
+}
+
+export interface ISkillNode {
+    id: string
+    skillFileId: string
+    folderId: string
+    type: string
+    title: string
+    content: string
+    priority: number
+    triggers?: string
+    cluster?: string
+    embeddingText?: string
+    orderIndex: number
+    updatedDate: Date
+    createdDate: Date
+    workspaceId: string
+}
+
+export interface ISkillEdge {
+    id: string
+    skillFileId: string
+    folderId: string
+    fromNodeId: string
+    toNodeId: string
+    relation: string
+    createdDate: Date
+    workspaceId: string
+}
+
+export interface ISkillCompileCache {
+    id: string
+    skillFileId: string
+    folderId: string
+    hash: string
+    compiledPrompt: string
+    tokenCount: number
+    executionMode: string
     createdDate: Date
     workspaceId: string
 }

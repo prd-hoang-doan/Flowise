@@ -66,6 +66,9 @@ import {
 import { SkillFolder } from '../database/entities/SkillFolder'
 import { SkillFile } from '../database/entities/SkillFile'
 import { SkillAsset } from '../database/entities/SkillAsset'
+import { SkillNode } from '../database/entities/SkillNode'
+import { SkillEdge } from '../database/entities/SkillEdge'
+import { SkillCompileCache } from '../database/entities/SkillCompileCache'
 
 export const QUESTION_VAR_PREFIX = 'question'
 export const FILE_ATTACHMENT_PREFIX = 'file_attachment'
@@ -108,7 +111,10 @@ export const databaseEntities: IDatabaseEntity = {
     CustomMcpServer: CustomMcpServer,
     SkillFolder: SkillFolder,
     SkillFile: SkillFile,
-    SkillAsset: SkillAsset
+    SkillAsset: SkillAsset,
+    SkillNode: SkillNode,
+    SkillEdge: SkillEdge,
+    SkillCompileCache: SkillCompileCache
 }
 
 /**

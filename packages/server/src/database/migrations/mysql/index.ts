@@ -48,6 +48,10 @@ import { AddCustomMcpServer1766000000000 } from './1766000000000-AddCustomMcpSer
 import { AddSkillFolderAndFile1767000000000 } from './1767000000000-AddSkillFolderAndFile'
 import { AddSkillFileDescriptionAndFilename1767100000000 } from './1767100000000-AddSkillFileDescriptionAndFilename'
 import { AddSkillAsset1768000000000 } from './1768000000000-AddSkillAsset'
+import { AddSkillNode1769000000000 } from './1769000000000-AddSkillNode'
+import { AddSkillEdge1769100000000 } from './1769100000000-AddSkillEdge'
+import { AddSkillCompileCache1769200000000 } from './1769200000000-AddSkillCompileCache'
+import { AddSkillFileCompileHash1769300000000 } from './1769300000000-AddSkillFileCompileHash'
 import { AddAuthTables1720230151482 } from '../../../enterprise/database/migrations/mysql/1720230151482-AddAuthTables'
 import { AddWorkspace1720230151484 } from '../../../enterprise/database/migrations/mysql/1720230151484-AddWorkspace'
 import { AddWorkspaceShared1726654922034 } from '../../../enterprise/database/migrations/mysql/1726654922034-AddWorkspaceShared'
@@ -121,5 +125,9 @@ export const mysqlMigrations = [
     AddCustomMcpServer1766000000000,
     AddSkillFolderAndFile1767000000000,
     AddSkillFileDescriptionAndFilename1767100000000,
-    AddSkillAsset1768000000000
+    AddSkillAsset1768000000000,
+    AddSkillNode1769000000000,
+    AddSkillEdge1769100000000,
+    AddSkillCompileCache1769200000000,
+    AddSkillFileCompileHash1769300000000
 ]

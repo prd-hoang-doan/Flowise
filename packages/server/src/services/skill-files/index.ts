@@ -6,6 +6,7 @@ import { SkillCompiler } from 'flowise-components'
 import { InternalFlowiseError } from '../../errors/internalFlowiseError'
 import { getErrorMessage } from '../../errors/utils'
 import { getRunningExpressApp } from '../../utils/getRunningExpressApp'
+import skillNodesService from '../skill-nodes'
 
 /**
  * Extract name and description from YAML front matter in markdown content.
@@ -67,6 +68,12 @@ const createSkillFile = async (folderId: string, requestBody: any, workspaceId: 
         newFile.workspaceId = workspaceId
         const file = appServer.AppDataSource.getRepository(SkillFile).create(newFile)
         const dbResponse = await appServer.AppDataSource.getRepository(SkillFile).save(file)
+
+        // Trigger node extraction pipeline (non-blocking on errors)
+        if (dbResponse.content) {
+            skillNodesService.extractNodes(dbResponse.id, folderId, workspaceId).catch(() => {})
+        }
+
         return dbResponse
     } catch (error) {
         if (error instanceof InternalFlowiseError) throw error
@@ -166,6 +173,12 @@ const updateSkillFile = async (fileId: string, folderId: string, fileBody: any, 
         file.folderId = folderId
         file.workspaceId = workspaceId
         const dbResponse = await appServer.AppDataSource.getRepository(SkillFile).save(file)
+
+        // Trigger node extraction pipeline if content changed (non-blocking on errors)
+        if (fileBody.content) {
+            skillNodesService.extractNodes(dbResponse.id, folderId, workspaceId).catch(() => {})
+        }
+
         return dbResponse
     } catch (error) {
         if (error instanceof InternalFlowiseError) throw error

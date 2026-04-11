@@ -1,29 +1,40 @@
-/* eslint-disable */
 import { Entity, Column, CreateDateColumn, UpdateDateColumn, PrimaryGeneratedColumn } from 'typeorm'
-import { ISkillFile } from '../../Interface'
+import { ISkillNode } from '../../Interface'
 
 @Entity()
-export class SkillFile implements ISkillFile {
+export class SkillNode implements ISkillNode {
     @PrimaryGeneratedColumn('uuid')
     id: string
+
+    @Column()
+    skillFileId: string
 
     @Column()
     folderId: string
 
     @Column()
-    name: string
+    type: string
+
+    @Column({ type: 'text' })
+    title: string
+
+    @Column({ type: 'text' })
+    content: string
+
+    @Column({ type: 'int', default: 70 })
+    priority: number
 
     @Column({ nullable: true, type: 'text' })
-    description?: string
+    triggers?: string
 
     @Column({ nullable: true })
-    filename?: string
+    cluster?: string
 
     @Column({ nullable: true, type: 'text' })
-    content?: string
+    embeddingText?: string
 
-    @Column({ nullable: true, type: 'text' })
-    compileHash?: string
+    @Column({ type: 'int', default: 0 })
+    orderIndex: number
 
     @Column({ type: 'timestamp' })
     @CreateDateColumn()
