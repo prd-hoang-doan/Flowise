@@ -298,11 +298,81 @@ const compilePreview = async (
     }
 }
 
+const getSkillFileNodes = async (fileId: string, folderId: string, workspaceId: string): Promise<any> => {
+    try {
+        const appServer = getRunningExpressApp()
+        const file = await appServer.AppDataSource.getRepository(SkillFile).findOneBy({
+            id: fileId,
+            folderId,
+            workspaceId
+        })
+        if (!file) {
+            throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `SkillFile ${fileId} not found`)
+        }
+
+        let nodes: any[] = []
+        try {
+            nodes = await appServer.AppDataSource.getRepository(SkillNode).find({
+                where: { skillFileId: fileId, folderId, workspaceId },
+                order: { priority: 'DESC', orderIndex: 'ASC' }
+            })
+        } catch {
+            // SkillNode table may not exist yet
+        }
+
+        let edges: any[] = []
+        try {
+            const { SkillEdge } = await import('../../database/entities/SkillEdge')
+            edges = await appServer.AppDataSource.getRepository(SkillEdge).find({
+                where: { skillFileId: fileId, folderId, workspaceId }
+            })
+        } catch {
+            // SkillEdge table may not exist yet
+        }
+
+        return { nodes, edges }
+    } catch (error) {
+        if (error instanceof InternalFlowiseError) throw error
+        throw new InternalFlowiseError(
+            StatusCodes.INTERNAL_SERVER_ERROR,
+            `Error: skillFilesService.getSkillFileNodes - ${getErrorMessage(error)}`
+        )
+    }
+}
+
+const reExtractNodes = async (fileId: string, folderId: string, workspaceId: string): Promise<any> => {
+    try {
+        const appServer = getRunningExpressApp()
+        const file = await appServer.AppDataSource.getRepository(SkillFile).findOneBy({
+            id: fileId,
+            folderId,
+            workspaceId
+        })
+        if (!file) {
+            throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `SkillFile ${fileId} not found`)
+        }
+
+        // Force re-extraction regardless of hash
+        await skillNodesService.extractNodes(fileId, folderId, workspaceId, true)
+
+        // Return the updated nodes + edges
+        return await getSkillFileNodes(fileId, folderId, workspaceId)
+    } catch (error) {
+        if (error instanceof InternalFlowiseError) throw error
+        throw new InternalFlowiseError(
+            StatusCodes.INTERNAL_SERVER_ERROR,
+            `Error: skillFilesService.reExtractNodes - ${getErrorMessage(error)}`
+        )
+    }
+}
+
 export default {
     createSkillFile,
     deleteSkillFile,
     getAllSkillFiles,
     getSkillFileById,
     updateSkillFile,
-    compilePreview
+    compilePreview,
+    getSkillFileNodes,
+    reExtractNodes
 }

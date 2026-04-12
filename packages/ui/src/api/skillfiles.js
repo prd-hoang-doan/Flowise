@@ -20,11 +20,17 @@ const getCompilePreview = (folderId, fileId, params = {}) => {
     return client.get(`/skill-folders/${folderId}/files/${fileId}/compile-preview${qs ? `?${qs}` : ''}`)
 }
 
+const getSkillFileNodes = (folderId, fileId) => client.get(`/skill-folders/${folderId}/files/${fileId}/nodes`)
+
+const reExtractNodes = (folderId, fileId) => client.post(`/skill-folders/${folderId}/files/${fileId}/re-extract`)
+
 export default {
     getAllSkillFiles,
     getSkillFile,
     createSkillFile,
     updateSkillFile,
     deleteSkillFile,
-    getCompilePreview
+    getCompilePreview,
+    getSkillFileNodes,
+    reExtractNodes
 }

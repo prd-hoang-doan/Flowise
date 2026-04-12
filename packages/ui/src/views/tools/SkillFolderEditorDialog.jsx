@@ -55,7 +55,8 @@ import {
     IconSettings,
     IconCode,
     IconHash,
-    IconFileAnalytics
+    IconFileAnalytics,
+    IconHierarchy2
 } from '@tabler/icons-react'
 
 // Project imports
@@ -206,6 +207,13 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     const [compilePreviewLoading, setCompilePreviewLoading] = useState(false)
     const [compiledPromptExpanded, setCompiledPromptExpanded] = useState(false)
 
+    // Nodes visualization state
+    const [skillNodes, setSkillNodes] = useState([])
+    const [skillEdges, setSkillEdges] = useState([])
+    const [nodesLoading, setNodesLoading] = useState(false)
+    const [reExtracting, setReExtracting] = useState(false)
+    const [expandedNodeIds, setExpandedNodeIds] = useState(new Set())
+
     const editor = useEditor(
         {
             extensions: [
@@ -318,6 +326,88 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
             loadCompilePreview()
         }
     }, [activeFileId, viewMode, loadCompilePreview])
+
+    const loadNodes = useCallback(async () => {
+        if (!folder?.id || !activeFileId) {
+            setSkillNodes([])
+            setSkillEdges([])
+            return
+        }
+        setNodesLoading(true)
+        try {
+            const resp = await skillFilesApi.getSkillFileNodes(folder.id, activeFileId)
+            setSkillNodes(resp.data?.nodes || [])
+            setSkillEdges(resp.data?.edges || [])
+        } catch (err) {
+            console.error('Failed to load nodes:', err)
+            setSkillNodes([])
+            setSkillEdges([])
+        } finally {
+            setNodesLoading(false)
+        }
+    }, [folder?.id, activeFileId])
+
+    useEffect(() => {
+        if (activeFileId && viewMode === 'nodes') {
+            loadNodes()
+        }
+    }, [activeFileId, viewMode, loadNodes])
+
+    const handleReExtract = async () => {
+        if (!folder?.id || !activeFileId) return
+        setReExtracting(true)
+        try {
+            const resp = await skillFilesApi.reExtractNodes(folder.id, activeFileId)
+            setSkillNodes(resp.data?.nodes || [])
+            setSkillEdges(resp.data?.edges || [])
+            setExpandedNodeIds(new Set())
+            enqueueSnackbar({
+                message: `Extracted ${resp.data?.nodes?.length || 0} nodes`,
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'success',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+        } catch (err) {
+            enqueueSnackbar({
+                message: 'Failed to re-extract nodes',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'error',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+        } finally {
+            setReExtracting(false)
+        }
+    }
+
+    const toggleNodeExpanded = (nodeId) => {
+        setExpandedNodeIds((prev) => {
+            const next = new Set(prev)
+            if (next.has(nodeId)) next.delete(nodeId)
+            else next.add(nodeId)
+            return next
+        })
+    }
+
+    const NODE_TYPE_CONFIG = {
+        role: { label: 'Role', color: '#9c27b0' },
+        rule: { label: 'Rules', color: '#f44336' },
+        behavior: { label: 'Instructions', color: '#2196f3' },
+        knowledge: { label: 'Knowledge', color: '#4caf50' },
+        asset: { label: 'Assets', color: '#ff9800' }
+    }
+    const NODE_TYPE_ORDER = ['role', 'rule', 'behavior', 'knowledge', 'asset']
 
     useEffect(() => {
         if (show && folder?.id) {
@@ -915,6 +1005,27 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                         <IconFileAnalytics size={14} style={{ marginRight: 4 }} />
                                         Summary
                                     </ToggleButton>
+                                    <ToggleButton value='nodes' sx={{ px: 1.5, py: 0.25, textTransform: 'none', fontSize: '0.8rem' }}>
+                                        <IconHierarchy2 size={14} style={{ marginRight: 4 }} />
+                                        Nodes
+                                        {skillNodes.length > 0 && (
+                                            <Box
+                                                component='span'
+                                                sx={{
+                                                    ml: 0.5,
+                                                    px: 0.5,
+                                                    py: 0,
+                                                    fontSize: '0.7rem',
+                                                    borderRadius: '8px',
+                                                    bgcolor: 'primary.main',
+                                                    color: 'primary.contrastText',
+                                                    lineHeight: 1.5
+                                                }}
+                                            >
+                                                {skillNodes.length}
+                                            </Box>
+                                        )}
+                                    </ToggleButton>
                                 </ToggleButtonGroup>
                             </Box>
 
@@ -1173,6 +1284,339 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                                     </Box>
                                                 </Collapse>
                                             </Box>
+                                        </>
+                                    )}
+                                </Box>
+                            ) : viewMode === 'nodes' ? (
+                                <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+                                    {nodesLoading ? (
+                                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 6 }}>
+                                            <CircularProgress size={28} />
+                                            <Typography variant='body2' color='textSecondary' sx={{ ml: 1.5 }}>
+                                                Loading nodes...
+                                            </Typography>
+                                        </Box>
+                                    ) : skillNodes.length === 0 ? (
+                                        <Box sx={{ textAlign: 'center', py: 6 }}>
+                                            <IconHierarchy2 size={40} color={theme.palette.text.disabled} />
+                                            <Typography variant='body2' color='textSecondary' sx={{ mt: 1 }}>
+                                                No nodes extracted yet
+                                            </Typography>
+                                            <Typography variant='caption' color='textSecondary' sx={{ display: 'block', mt: 0.5 }}>
+                                                Save the skill file with content to trigger node extraction
+                                            </Typography>
+                                            <Button
+                                                variant='outlined'
+                                                size='small'
+                                                startIcon={<IconRefresh size={16} />}
+                                                onClick={handleReExtract}
+                                                disabled={reExtracting}
+                                                sx={{ mt: 1.5, textTransform: 'none' }}
+                                            >
+                                                {reExtracting ? 'Extracting...' : 'Extract Now'}
+                                            </Button>
+                                        </Box>
+                                    ) : (
+                                        <>
+                                            {/* Summary stats bar */}
+                                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1, flexWrap: 'wrap' }}>
+                                                <Typography variant='subtitle2' sx={{ fontWeight: 600, mr: 1 }}>
+                                                    Extracted Nodes
+                                                </Typography>
+                                                {NODE_TYPE_ORDER.map((type) => {
+                                                    const count = skillNodes.filter((n) => n.type === type).length
+                                                    if (count === 0) return null
+                                                    const cfg = NODE_TYPE_CONFIG[type]
+                                                    return (
+                                                        <Chip
+                                                            key={type}
+                                                            label={`${cfg.label}: ${count}`}
+                                                            size='small'
+                                                            sx={{
+                                                                fontSize: '0.7rem',
+                                                                bgcolor: cfg.color + '18',
+                                                                color: cfg.color,
+                                                                border: `1px solid ${cfg.color}40`,
+                                                                fontWeight: 600
+                                                            }}
+                                                        />
+                                                    )
+                                                })}
+                                                {skillEdges.length > 0 && (
+                                                    <Chip
+                                                        label={`${skillEdges.length} edge${skillEdges.length !== 1 ? 's' : ''}`}
+                                                        size='small'
+                                                        variant='outlined'
+                                                        sx={{ fontSize: '0.7rem' }}
+                                                    />
+                                                )}
+                                                <Box sx={{ flex: 1 }} />
+                                                <Tooltip title='Re-extract nodes from content'>
+                                                    <span>
+                                                        <Button
+                                                            variant='outlined'
+                                                            size='small'
+                                                            startIcon={
+                                                                <IconRefresh
+                                                                    size={14}
+                                                                    style={{ animation: reExtracting ? 'spin 1s linear infinite' : 'none' }}
+                                                                />
+                                                            }
+                                                            onClick={handleReExtract}
+                                                            disabled={reExtracting}
+                                                            sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                                                        >
+                                                            Re-extract
+                                                        </Button>
+                                                    </span>
+                                                </Tooltip>
+                                            </Box>
+
+                                            {/* Grouped node sections */}
+                                            {NODE_TYPE_ORDER.map((type) => {
+                                                const typeNodes = skillNodes.filter((n) => n.type === type)
+                                                if (typeNodes.length === 0) return null
+                                                const cfg = NODE_TYPE_CONFIG[type]
+                                                return (
+                                                    <Box key={type} sx={{ mb: 2.5 }}>
+                                                        <Box
+                                                            sx={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                mb: 1,
+                                                                gap: 1
+                                                            }}
+                                                        >
+                                                            <Box
+                                                                sx={{
+                                                                    width: 10,
+                                                                    height: 10,
+                                                                    borderRadius: '50%',
+                                                                    bgcolor: cfg.color,
+                                                                    flexShrink: 0
+                                                                }}
+                                                            />
+                                                            <Typography
+                                                                variant='caption'
+                                                                sx={{
+                                                                    fontWeight: 700,
+                                                                    textTransform: 'uppercase',
+                                                                    letterSpacing: 0.5,
+                                                                    color: cfg.color
+                                                                }}
+                                                            >
+                                                                {cfg.label} ({typeNodes.length})
+                                                            </Typography>
+                                                            <Divider sx={{ flex: 1 }} />
+                                                        </Box>
+
+                                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                                            {typeNodes.map((node) => {
+                                                                const nodeEdges = skillEdges.filter(
+                                                                    (e) => e.fromNodeId === node.id || e.toNodeId === node.id
+                                                                )
+                                                                const isExpanded = expandedNodeIds.has(node.id)
+                                                                const isLong = node.content && node.content.length > 120
+                                                                let triggers = []
+                                                                try {
+                                                                    triggers = node.triggers ? JSON.parse(node.triggers) : []
+                                                                } catch {
+                                                                    triggers = []
+                                                                }
+
+                                                                return (
+                                                                    <Box
+                                                                        key={node.id}
+                                                                        sx={{
+                                                                            border: 1,
+                                                                            borderColor: 'divider',
+                                                                            borderRadius: 1.5,
+                                                                            p: 1.5,
+                                                                            bgcolor:
+                                                                                theme.palette.mode === 'dark'
+                                                                                    ? 'rgba(255,255,255,0.02)'
+                                                                                    : 'rgba(0,0,0,0.01)',
+                                                                            borderLeft: `3px solid ${cfg.color}`,
+                                                                            '&:hover': {
+                                                                                bgcolor:
+                                                                                    theme.palette.mode === 'dark'
+                                                                                        ? 'rgba(255,255,255,0.04)'
+                                                                                        : 'rgba(0,0,0,0.03)'
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        {/* Header row */}
+                                                                        <Box
+                                                                            sx={{
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: 0.75,
+                                                                                mb: 0.5
+                                                                            }}
+                                                                        >
+                                                                            <Chip
+                                                                                label={node.type}
+                                                                                size='small'
+                                                                                sx={{
+                                                                                    height: 18,
+                                                                                    fontSize: '0.65rem',
+                                                                                    fontWeight: 600,
+                                                                                    bgcolor: cfg.color,
+                                                                                    color: '#fff',
+                                                                                    textTransform: 'uppercase'
+                                                                                }}
+                                                                            />
+                                                                            <Typography
+                                                                                variant='caption'
+                                                                                sx={{
+                                                                                    fontFamily: 'monospace',
+                                                                                    opacity: 0.6
+                                                                                }}
+                                                                            >
+                                                                                P:{node.priority}
+                                                                            </Typography>
+                                                                            {node.cluster && (
+                                                                                <Chip
+                                                                                    label={node.cluster}
+                                                                                    size='small'
+                                                                                    variant='outlined'
+                                                                                    sx={{
+                                                                                        height: 18,
+                                                                                        fontSize: '0.6rem',
+                                                                                        opacity: 0.7
+                                                                                    }}
+                                                                                />
+                                                                            )}
+                                                                            <Typography
+                                                                                variant='caption'
+                                                                                noWrap
+                                                                                sx={{
+                                                                                    fontWeight: 500,
+                                                                                    flex: 1,
+                                                                                    fontSize: '0.75rem'
+                                                                                }}
+                                                                            >
+                                                                                {node.title}
+                                                                            </Typography>
+                                                                            <Typography
+                                                                                variant='caption'
+                                                                                sx={{
+                                                                                    fontFamily: 'monospace',
+                                                                                    fontSize: '0.6rem',
+                                                                                    opacity: 0.4
+                                                                                }}
+                                                                            >
+                                                                                #{node.orderIndex}
+                                                                            </Typography>
+                                                                        </Box>
+
+                                                                        {/* Content */}
+                                                                        <Typography
+                                                                            variant='body2'
+                                                                            sx={{
+                                                                                fontSize: '0.8rem',
+                                                                                lineHeight: 1.5,
+                                                                                whiteSpace: 'pre-wrap',
+                                                                                wordBreak: 'break-word',
+                                                                                ...(isLong && !isExpanded
+                                                                                    ? {
+                                                                                          display: '-webkit-box',
+                                                                                          WebkitLineClamp: 2,
+                                                                                          WebkitBoxOrient: 'vertical',
+                                                                                          overflow: 'hidden'
+                                                                                      }
+                                                                                    : {})
+                                                                            }}
+                                                                        >
+                                                                            {node.content}
+                                                                        </Typography>
+                                                                        {isLong && (
+                                                                            <Typography
+                                                                                variant='caption'
+                                                                                sx={{
+                                                                                    color: 'primary.main',
+                                                                                    cursor: 'pointer',
+                                                                                    '&:hover': { textDecoration: 'underline' }
+                                                                                }}
+                                                                                onClick={() => toggleNodeExpanded(node.id)}
+                                                                            >
+                                                                                {isExpanded ? 'Show less' : 'Show more'}
+                                                                            </Typography>
+                                                                        )}
+
+                                                                        {/* Triggers */}
+                                                                        {triggers.length > 0 && (
+                                                                            <Box
+                                                                                sx={{
+                                                                                    display: 'flex',
+                                                                                    flexWrap: 'wrap',
+                                                                                    gap: 0.5,
+                                                                                    mt: 0.75
+                                                                                }}
+                                                                            >
+                                                                                {triggers.slice(0, 8).map((t, i) => (
+                                                                                    <Chip
+                                                                                        key={i}
+                                                                                        label={t}
+                                                                                        size='small'
+                                                                                        variant='outlined'
+                                                                                        sx={{
+                                                                                            height: 18,
+                                                                                            fontSize: '0.6rem',
+                                                                                            opacity: 0.7
+                                                                                        }}
+                                                                                    />
+                                                                                ))}
+                                                                                {triggers.length > 8 && (
+                                                                                    <Typography
+                                                                                        variant='caption'
+                                                                                        color='textSecondary'
+                                                                                        sx={{ fontSize: '0.6rem' }}
+                                                                                    >
+                                                                                        +{triggers.length - 8} more
+                                                                                    </Typography>
+                                                                                )}
+                                                                            </Box>
+                                                                        )}
+
+                                                                        {/* Edges */}
+                                                                        {nodeEdges.length > 0 && (
+                                                                            <Box sx={{ mt: 0.75 }}>
+                                                                                {nodeEdges.map((edge) => {
+                                                                                    const isFrom = edge.fromNodeId === node.id
+                                                                                    const targetId = isFrom
+                                                                                        ? edge.toNodeId
+                                                                                        : edge.fromNodeId
+                                                                                    const targetNode = skillNodes.find(
+                                                                                        (n) => n.id === targetId
+                                                                                    )
+                                                                                    return (
+                                                                                        <Typography
+                                                                                            key={edge.id}
+                                                                                            variant='caption'
+                                                                                            sx={{
+                                                                                                display: 'block',
+                                                                                                fontSize: '0.65rem',
+                                                                                                opacity: 0.6,
+                                                                                                fontFamily: 'monospace'
+                                                                                            }}
+                                                                                        >
+                                                                                            {isFrom ? '\u2192' : '\u2190'} {edge.relation}{' '}
+                                                                                            {targetNode
+                                                                                                ? targetNode.title
+                                                                                                : targetId.slice(0, 8)}
+                                                                                        </Typography>
+                                                                                    )
+                                                                                })}
+                                                                            </Box>
+                                                                        )}
+                                                                    </Box>
+                                                                )
+                                                            })}
+                                                        </Box>
+                                                    </Box>
+                                                )
+                                            })}
                                         </>
                                     )}
                                 </Box>

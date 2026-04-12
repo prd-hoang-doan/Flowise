@@ -34,6 +34,10 @@ router.get('/:folderId/files/:id', checkPermission('tools:view'), skillFilesCont
 // COMPILE PREVIEW
 router.get('/:folderId/files/:id/compile-preview', checkPermission('tools:view'), skillFilesController.compilePreview)
 
+// NODES
+router.get('/:folderId/files/:id/nodes', checkPermission('tools:view'), skillFilesController.getSkillFileNodes)
+router.post('/:folderId/files/:id/re-extract', checkAnyPermission('tools:update,tools:create'), skillFilesController.reExtractNodes)
+
 // UPDATE
 router.put('/:folderId/files/:id', checkAnyPermission('tools:update,tools:create'), skillFilesController.updateSkillFile)
 

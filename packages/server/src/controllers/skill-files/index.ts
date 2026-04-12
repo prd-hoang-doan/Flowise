@@ -185,11 +185,62 @@ const compilePreview = async (req: Request, res: Response, next: NextFunction) =
     }
 }
 
+const getSkillFileNodes = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (typeof req.params === 'undefined' || !req.params.id) {
+            throw new InternalFlowiseError(
+                StatusCodes.PRECONDITION_FAILED,
+                `Error: skillFilesController.getSkillFileNodes - id not provided!`
+            )
+        }
+        const workspaceId = req.user?.activeWorkspaceId
+        if (!workspaceId) {
+            throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `Error: skillFilesController.getSkillFileNodes - workspace not found!`)
+        }
+        const folderId = req.params.folderId
+        if (!folderId) {
+            throw new InternalFlowiseError(
+                StatusCodes.PRECONDITION_FAILED,
+                `Error: skillFilesController.getSkillFileNodes - folderId not provided!`
+            )
+        }
+        const apiResponse = await skillFilesService.getSkillFileNodes(req.params.id, folderId, workspaceId)
+        return res.json(apiResponse)
+    } catch (error) {
+        next(error)
+    }
+}
+
+const reExtractNodes = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (typeof req.params === 'undefined' || !req.params.id) {
+            throw new InternalFlowiseError(StatusCodes.PRECONDITION_FAILED, `Error: skillFilesController.reExtractNodes - id not provided!`)
+        }
+        const workspaceId = req.user?.activeWorkspaceId
+        if (!workspaceId) {
+            throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `Error: skillFilesController.reExtractNodes - workspace not found!`)
+        }
+        const folderId = req.params.folderId
+        if (!folderId) {
+            throw new InternalFlowiseError(
+                StatusCodes.PRECONDITION_FAILED,
+                `Error: skillFilesController.reExtractNodes - folderId not provided!`
+            )
+        }
+        const apiResponse = await skillFilesService.reExtractNodes(req.params.id, folderId, workspaceId)
+        return res.json(apiResponse)
+    } catch (error) {
+        next(error)
+    }
+}
+
 export default {
     createSkillFile,
     deleteSkillFile,
     getAllSkillFiles,
     getSkillFileById,
     updateSkillFile,
-    compilePreview
+    compilePreview,
+    getSkillFileNodes,
+    reExtractNodes
 }
