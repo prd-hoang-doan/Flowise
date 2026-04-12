@@ -2,7 +2,9 @@ import { StatusCodes } from 'http-status-codes'
 import { SkillFile } from '../../database/entities/SkillFile'
 import { SkillFolder } from '../../database/entities/SkillFolder'
 import { SkillAsset } from '../../database/entities/SkillAsset'
+import { SkillNode } from '../../database/entities/SkillNode'
 import { SkillCompiler } from 'flowise-components'
+import type { SkillNodeInput } from 'flowise-components'
 import { InternalFlowiseError } from '../../errors/internalFlowiseError'
 import { getErrorMessage } from '../../errors/utils'
 import { getRunningExpressApp } from '../../utils/getRunningExpressApp'
@@ -227,17 +229,57 @@ const compilePreview = async (
             // SkillAsset table may not exist yet
         }
 
+        // Load extracted nodes for node-aware compilation
+        let nodes: SkillNodeInput[] = []
+        try {
+            nodes = await appServer.AppDataSource.getRepository(SkillNode).find({
+                where: { skillFileId: fileId, folderId, workspaceId },
+                order: { priority: 'DESC', orderIndex: 'ASC' }
+            })
+        } catch {
+            // SkillNode table may not exist yet
+        }
+
         const compiler = new SkillCompiler()
+        const compileConfig = {
+            executionMode: (config?.executionMode as 'summary' | 'multimodal') || 'summary',
+            maxAssetContext: config?.maxAssetContext ?? 2000,
+            maxMultimodalAssets: config?.maxMultimodalAssets ?? 5,
+            maxDocumentChars: config?.maxDocumentChars ?? 5000
+        }
+
+        if (nodes.length > 0) {
+            // Node-aware compilation path
+            const result = compiler.compileForToolFromNodes(
+                { id: folder.id, name: folder.name, description: folder.description },
+                { id: file.id, name: file.name, description: file.description, content: file.content },
+                nodes,
+                assets,
+                compileConfig
+            )
+
+            return {
+                metadata: {
+                    skillName: file.name,
+                    fileCount: allFiles.length,
+                    assetSummary: [],
+                    executionMode: compileConfig.executionMode,
+                    compiledAt: new Date().toISOString(),
+                    sections: [],
+                    nodeCount: nodes.length
+                },
+                compiledPrompt: result.summaryContent,
+                tokenEstimate: result.tokenEstimate,
+                hash: result.hash
+            }
+        }
+
+        // Fallback: raw content compilation when no nodes exist
         const output = compiler.compile(
             { id: folder.id, name: folder.name, description: folder.description },
             { id: file.id, name: file.name, description: file.description, content: file.content },
             assets,
-            {
-                executionMode: (config?.executionMode as 'summary' | 'multimodal') || 'summary',
-                maxAssetContext: config?.maxAssetContext ?? 2000,
-                maxMultimodalAssets: config?.maxMultimodalAssets ?? 5,
-                maxDocumentChars: config?.maxDocumentChars ?? 5000
-            },
+            compileConfig,
             allFiles.length
         )
 

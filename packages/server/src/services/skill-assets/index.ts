@@ -10,6 +10,7 @@ import { getErrorMessage } from '../../errors/utils'
 import { getRunningExpressApp } from '../../utils/getRunningExpressApp'
 import { getUploadPath } from '../../utils'
 import captionService from './captionService'
+import skillNodesService from '../skill-nodes'
 
 const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 
@@ -75,6 +76,10 @@ const createSkillAsset = async (folderId: string, fileId: string, file: Express.
             existing.storagePath = storagePath
             existing.caption = existing.caption || undefined
             const dbResponse = await appServer.AppDataSource.getRepository(SkillAsset).save(existing)
+
+            // Re-extract nodes for replaced asset (non-blocking)
+            skillNodesService.extractNodes(fileId, folderId, workspaceId, true).catch(() => {})
+
             return dbResponse
         }
 
@@ -102,6 +107,10 @@ const createSkillAsset = async (folderId: string, fileId: string, file: Express.
 
         const asset = appServer.AppDataSource.getRepository(SkillAsset).create(newAsset)
         const dbResponse = await appServer.AppDataSource.getRepository(SkillAsset).save(asset)
+
+        // Re-extract nodes to include new asset node (non-blocking)
+        skillNodesService.extractNodes(fileId, folderId, workspaceId, true).catch(() => {})
+
         return dbResponse
     } catch (error) {
         if (error instanceof InternalFlowiseError) throw error
@@ -162,6 +171,10 @@ const updateSkillAssetCaption = async (assetId: string, folderId: string, captio
         }
         asset.caption = caption
         const dbResponse = await appServer.AppDataSource.getRepository(SkillAsset).save(asset)
+
+        // Re-extract nodes to update asset node content (non-blocking)
+        skillNodesService.extractNodes(asset.fileId, folderId, workspaceId, true).catch(() => {})
+
         return dbResponse
     } catch (error) {
         if (error instanceof InternalFlowiseError) throw error
@@ -180,6 +193,7 @@ const deleteSkillAsset = async (assetId: string, folderId: string, workspaceId: 
             folderId,
             workspaceId
         })
+        const fileId = asset?.fileId
         if (asset && fs.existsSync(asset.storagePath)) {
             fs.unlinkSync(asset.storagePath)
         }
@@ -188,6 +202,12 @@ const deleteSkillAsset = async (assetId: string, folderId: string, workspaceId: 
             folderId,
             workspaceId
         })
+
+        // Re-extract nodes to remove deleted asset node (non-blocking)
+        if (fileId) {
+            skillNodesService.extractNodes(fileId, folderId, workspaceId, true).catch(() => {})
+        }
+
         return dbResponse
     } catch (error) {
         throw new InternalFlowiseError(
@@ -252,6 +272,10 @@ const regenerateCaption = async (assetId: string, folderId: string, workspaceId:
         const caption = await captionService.generateVisionCaption(asset.storagePath, asset.mimeType, captionModelConfig)
         asset.caption = caption
         const dbResponse = await appServer.AppDataSource.getRepository(SkillAsset).save(asset)
+
+        // Re-extract nodes to update asset node with new caption (non-blocking)
+        skillNodesService.extractNodes(asset.fileId, folderId, workspaceId, true).catch(() => {})
+
         return dbResponse
     } catch (error) {
         if (error instanceof InternalFlowiseError) throw error

@@ -19,10 +19,12 @@ export * from './httpSecurity'
 export * from './pythonCodeValidator'
 export { MCPToolkit } from '../nodes/tools/MCP/core'
 export { SkillCompiler } from '../nodes/tools/SkillTool/compiler/SkillCompiler'
+export { computeCompileHash } from '../nodes/tools/SkillTool/compiler/nodeCompiler'
 export type {
     CompiledSkillOutput,
     SkillMetadata,
     CompileConfig,
     SkillFileInput,
-    SkillAssetInput
+    SkillAssetInput,
+    SkillNodeInput
 } from '../nodes/tools/SkillTool/compiler/types'

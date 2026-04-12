@@ -2,7 +2,16 @@ import { Tool, ToolParams } from '@langchain/core/tools'
 import { ICommonObject, IDatabaseEntity, INode, INodeData, INodeOptionsValue, INodeParams } from '../../../src/Interface'
 import { DataSource } from 'typeorm'
 import { SkillCompiler, formatToolName } from './compiler/SkillCompiler'
-import { MultimodalContentPart, MULTIMODAL_CONTENT_KEY, SkillAssetInput } from './compiler/types'
+import {
+    MultimodalContentPart,
+    MULTIMODAL_CONTENT_KEY,
+    SkillAssetInput,
+    SkillNodeInput,
+    SkillEdgeInput,
+    NodeCompileConfig
+} from './compiler/types'
+import { compileFromNodes, computeCompileHash } from './compiler/nodeCompiler'
+import { retrieveRelevantNodes } from './compiler/retriever'
 
 export { MultimodalContentPart, MULTIMODAL_CONTENT_KEY }
 
@@ -11,18 +20,63 @@ class SkillFileTool extends Tool {
     description: string
     private content: string
     private multimodalContent: MultimodalContentPart[] | null
+    // Node-aware fields (Phase 4)
+    private nodes: SkillNodeInput[] | null
+    private edges: SkillEdgeInput[] | null
+    private skillName: string
+    private skillDescription: string
+    private fileAssets: SkillAssetInput[]
+    private nodeCompileConfig: NodeCompileConfig | null
+    private maxRetrievedNodes: number
 
     constructor(
-        fields: ToolParams & { name: string; description: string; content: string; multimodalContent?: MultimodalContentPart[] | null }
+        fields: ToolParams & {
+            name: string
+            description: string
+            content: string
+            multimodalContent?: MultimodalContentPart[] | null
+            nodes?: SkillNodeInput[] | null
+            edges?: SkillEdgeInput[] | null
+            skillName?: string
+            skillDescription?: string
+            fileAssets?: SkillAssetInput[]
+            nodeCompileConfig?: NodeCompileConfig | null
+            maxRetrievedNodes?: number
+        }
     ) {
         super(fields)
         this.name = fields.name
         this.description = fields.description
         this.content = fields.content
         this.multimodalContent = fields.multimodalContent ?? null
+        this.nodes = fields.nodes ?? null
+        this.edges = fields.edges ?? null
+        this.skillName = fields.skillName ?? ''
+        this.skillDescription = fields.skillDescription ?? ''
+        this.fileAssets = fields.fileAssets ?? []
+        this.nodeCompileConfig = fields.nodeCompileConfig ?? null
+        this.maxRetrievedNodes = fields.maxRetrievedNodes ?? 20
     }
 
-    async _call(): Promise<string> {
+    async _call(input: string): Promise<string> {
+        // Node-aware retrieval path: select relevant nodes based on user query
+        if (this.nodes && this.nodes.length > 0 && this.nodeCompileConfig) {
+            const relevantNodes = retrieveRelevantNodes(input, this.nodes, this.edges || [], this.maxRetrievedNodes)
+            const { compiledPrompt, multimodalPayload } = compileFromNodes(
+                this.skillName,
+                this.skillDescription,
+                relevantNodes,
+                this.fileAssets,
+                this.nodeCompileConfig
+            )
+
+            if (this.nodeCompileConfig.executionMode === 'multimodal' && multimodalPayload.length > 0) {
+                return JSON.stringify({ [MULTIMODAL_CONTENT_KEY]: true, content: multimodalPayload })
+            }
+            return compiledPrompt
+        }
+
+        // Backward compat: return pre-compiled content
         if (this.multimodalContent) {
             return JSON.stringify({ [MULTIMODAL_CONTENT_KEY]: true, content: this.multimodalContent })
         }
@@ -233,22 +287,135 @@ class SkillTool implements INode {
         const compiler = new SkillCompiler()
         const compileConfig = { executionMode, maxAssetContext, maxMultimodalAssets, maxDocumentChars }
 
+        // Load nodes and edges for node-aware compilation (Phase 4)
+        let nodesByFileId: Record<string, SkillNodeInput[]> = {}
+        let edgesByFileId: Record<string, SkillEdgeInput[]> = {}
+        if (databaseEntities?.['SkillNode']) {
+            try {
+                const allNodes = await appDataSource.getRepository(databaseEntities['SkillNode']).find({
+                    where: { ...searchOptions, folderId },
+                    order: { priority: 'DESC', orderIndex: 'ASC' }
+                })
+                for (const node of allNodes) {
+                    if (!nodesByFileId[node.skillFileId]) nodesByFileId[node.skillFileId] = []
+                    nodesByFileId[node.skillFileId].push(node as SkillNodeInput)
+                }
+            } catch {
+                // SkillNode table may not exist yet (pre-migration); gracefully degrade
+            }
+        }
+        if (databaseEntities?.['SkillEdge']) {
+            try {
+                const allEdges = await appDataSource.getRepository(databaseEntities['SkillEdge']).find({
+                    where: { ...searchOptions, folderId }
+                })
+                for (const edge of allEdges) {
+                    if (!edgesByFileId[edge.skillFileId]) edgesByFileId[edge.skillFileId] = []
+                    edgesByFileId[edge.skillFileId].push(edge as SkillEdgeInput)
+                }
+            } catch {
+                // SkillEdge table may not exist yet (pre-migration); gracefully degrade
+            }
+        }
+
+        // Check compile cache for node-aware compilations
+        let cacheByFileKey: Record<string, { compiledPrompt: string }> = {}
+        if (databaseEntities?.['SkillCompileCache']) {
+            try {
+                const cacheEntries = await appDataSource.getRepository(databaseEntities['SkillCompileCache']).find({
+                    where: { ...searchOptions, folderId, executionMode }
+                })
+                for (const entry of cacheEntries) {
+                    cacheByFileKey[`${entry.skillFileId}:${entry.hash}`] = { compiledPrompt: entry.compiledPrompt }
+                }
+            } catch {
+                // SkillCompileCache table may not exist yet
+            }
+        }
+
+        const nodeCompileConfig: NodeCompileConfig = {
+            executionMode,
+            maxAssetContext,
+            maxMultimodalAssets,
+            maxDocumentChars,
+            maxTokenBudget: 0 // 0 = unlimited at init; trimming happens at retrieval time
+        }
+
         return files.map((file: any) => {
             const fileAssets = assetsByFileId[file.id] || []
+            const fileNodes = nodesByFileId[file.id] || []
+            const fileEdges = edgesByFileId[file.id] || []
 
-            const { summaryContent, multimodalContent } = compiler.compileForTool(
-                { id: folder.id, name: folder.name, description: folder.description },
-                { id: file.id, name: file.name, description: file.description, content: file.content },
-                fileAssets,
-                compileConfig,
-                files.length
-            )
+            let summaryContent: string
+            let multimodalContent: MultimodalContentPart[] | null = null
+
+            if (fileNodes.length > 0) {
+                // Node-aware path: check cache first
+                const cacheHash = computeCompileHash(fileNodes, fileAssets, executionMode, maxAssetContext)
+                const cached = cacheByFileKey[`${file.id}:${cacheHash}`]
+
+                if (cached) {
+                    summaryContent = cached.compiledPrompt
+                } else {
+                    // Compile from nodes
+                    const result = compiler.compileForToolFromNodes(
+                        { id: folder.id, name: folder.name, description: folder.description },
+                        { id: file.id, name: file.name, description: file.description, content: file.content },
+                        fileNodes,
+                        fileAssets,
+                        compileConfig
+                    )
+                    summaryContent = result.summaryContent
+                    multimodalContent = result.multimodalContent
+
+                    // Save to cache asynchronously (fire-and-forget)
+                    if (databaseEntities?.['SkillCompileCache']) {
+                        try {
+                            const cacheRepo = appDataSource.getRepository(databaseEntities['SkillCompileCache'])
+                            cacheRepo
+                                .delete({ skillFileId: file.id, executionMode, ...searchOptions })
+                                .then(() => {
+                                    const entry = cacheRepo.create({
+                                        skillFileId: file.id,
+                                        folderId,
+                                        hash: cacheHash,
+                                        compiledPrompt: summaryContent,
+                                        tokenCount: result.tokenEstimate,
+                                        executionMode,
+                                        workspaceId: searchOptions.workspaceId || ''
+                                    })
+                                    cacheRepo.save(entry).catch(() => {})
+                                })
+                                .catch(() => {})
+                        } catch {
+                            // Cache save is best-effort
+                        }
+                    }
+                }
+            } else {
+                // Backward compat: no nodes, use raw content compilation
+                const result = compiler.compileForTool(
+                    { id: folder.id, name: folder.name, description: folder.description },
+                    { id: file.id, name: file.name, description: file.description, content: file.content },
+                    fileAssets,
+                    compileConfig,
+                    files.length
+                )
+                summaryContent = result.summaryContent
+                multimodalContent = result.multimodalContent
+            }
 
             const tool = new SkillFileTool({
                 name: formatToolName(file.name),
                 description: file.description || `Skill: ${file.name}`,
                 content: summaryContent,
-                multimodalContent
+                multimodalContent,
+                nodes: fileNodes.length > 0 ? fileNodes : null,
+                edges: fileEdges.length > 0 ? fileEdges : null,
+                skillName: file.name,
+                skillDescription: file.description || '',
+                fileAssets,
+                nodeCompileConfig: fileNodes.length > 0 ? nodeCompileConfig : null
             })
             ;(tool as any).fileId = file.id
             return tool

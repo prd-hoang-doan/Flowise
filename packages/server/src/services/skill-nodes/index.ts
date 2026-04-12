@@ -17,9 +17,11 @@ import { extract, computeHash, RawSkillInput } from './extractor'
 /**
  * Run the extraction pipeline for a skill file.
  * Compares content hash to skip extraction if content hasn't changed.
- * Called after createSkillFile() and updateSkillFile().
+ * Called after createSkillFile(), updateSkillFile(), and asset mutations.
+ *
+ * @param force - Skip hash check and force re-extraction (used after asset changes)
  */
-const extractNodes = async (skillFileId: string, folderId: string, workspaceId: string): Promise<void> => {
+const extractNodes = async (skillFileId: string, folderId: string, workspaceId: string, force?: boolean): Promise<void> => {
     try {
         const appServer = getRunningExpressApp()
 
@@ -30,9 +32,11 @@ const extractNodes = async (skillFileId: string, folderId: string, workspaceId: 
         })
         if (!file || !file.content) return
 
-        // Check if content has changed
-        const contentHash = computeHash(file.content)
-        if (file.compileHash === contentHash) return // No changes, skip extraction
+        // Check if content has changed (skip when forced, e.g. after asset mutations)
+        if (!force) {
+            const contentHash = computeHash(file.content)
+            if (file.compileHash === contentHash) return // No changes, skip extraction
+        }
 
         // Load assets for this file
         let assets: Array<{ id: string; filename: string; caption?: string }> = []

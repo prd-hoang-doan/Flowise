@@ -8,11 +8,14 @@ import {
     CompiledSkillOutput,
     SkillMetadata,
     DEFAULT_COMPILE_CONFIG,
-    MultimodalContentPart
+    MultimodalContentPart,
+    SkillNodeInput,
+    NodeCompileConfig
 } from './types'
 import { normalize, stripFrontMatter, formatToolName } from './normalizer'
 import { renderLegacy } from './renderer'
 import { AssetCompilerRegistry } from './assetCompilers'
+import { compileFromNodes as compileNodes, computeCompileHash } from './nodeCompiler'
 
 export class SkillCompiler {
     private registry: AssetCompilerRegistry
@@ -108,6 +111,48 @@ export class SkillCompiler {
         const multimodalContent =
             output.metadata.executionMode === 'multimodal' && output.multimodalPayload.length > 0 ? output.multimodalPayload : null
         return { summaryContent: output.compiledPrompt, multimodalContent, output }
+    }
+
+    /**
+     * Node-aware compilation: compile from structured nodes instead of raw content.
+     * Used when nodes have been extracted from the skill file (Phase 4).
+     * Falls back to raw content compilation when no nodes exist.
+     */
+    compileForToolFromNodes(
+        folder: { id: string; name: string; description?: string },
+        file: SkillFileInput,
+        nodes: SkillNodeInput[],
+        assets: SkillAssetInput[],
+        config?: Partial<CompileConfig>,
+        maxTokenBudget?: number
+    ): { summaryContent: string; multimodalContent: MultimodalContentPart[] | null; hash: string; tokenEstimate: number } {
+        // If no nodes, fall back to raw content compilation
+        if (!nodes.length) {
+            const result = this.compileForTool(folder, file, assets, config)
+            return {
+                summaryContent: result.summaryContent,
+                multimodalContent: result.multimodalContent,
+                hash: result.output.hash,
+                tokenEstimate: result.output.tokenEstimate
+            }
+        }
+
+        const mergedConfig: CompileConfig = { ...DEFAULT_COMPILE_CONFIG, ...config }
+        const nodeConfig: NodeCompileConfig = {
+            executionMode: mergedConfig.executionMode,
+            maxAssetContext: mergedConfig.maxAssetContext,
+            maxMultimodalAssets: mergedConfig.maxMultimodalAssets,
+            maxDocumentChars: mergedConfig.maxDocumentChars,
+            maxTokenBudget: maxTokenBudget || 0
+        }
+
+        const { compiledPrompt, multimodalPayload } = compileNodes(file.name, file.description || '', nodes, assets, nodeConfig)
+
+        const hash = computeCompileHash(nodes, assets, mergedConfig.executionMode, mergedConfig.maxAssetContext)
+        const tokenEstimate = estimateTokens(compiledPrompt)
+        const multimodalContent = mergedConfig.executionMode === 'multimodal' && multimodalPayload.length > 0 ? multimodalPayload : null
+
+        return { summaryContent: compiledPrompt, multimodalContent, hash, tokenEstimate }
     }
 
     getRegistry(): AssetCompilerRegistry {

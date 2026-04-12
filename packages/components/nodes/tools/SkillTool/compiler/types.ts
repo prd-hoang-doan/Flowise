@@ -103,3 +103,35 @@ export interface CompiledSkillOutput {
     tokenEstimate: number
     hash: string
 }
+
+// --- Node-Aware Compilation (Phase 4) ---
+
+export interface SkillNodeInput {
+    id: string
+    skillFileId: string
+    folderId: string
+    type: string // 'role' | 'rule' | 'behavior' | 'knowledge' | 'asset'
+    title: string
+    content: string
+    priority: number
+    triggers?: string // JSON array or string[]
+    cluster?: string
+    orderIndex: number
+}
+
+export interface SkillEdgeInput {
+    id: string
+    skillFileId: string
+    folderId: string
+    fromNodeId: string
+    toNodeId: string
+    relation: string // 'supports' | 'depends_on' | 'extends'
+}
+
+export interface NodeCompileConfig {
+    executionMode: 'summary' | 'multimodal'
+    maxAssetContext: number
+    maxMultimodalAssets: number
+    maxDocumentChars: number
+    maxTokenBudget: number
+}

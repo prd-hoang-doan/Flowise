@@ -51,7 +51,7 @@
 
 ---
 
-## WI-P4-1: SkillNode Entity + Migration
+## WI-P4-1: SkillNode Entity + Migration (DONE)
 
 ### Problem
 
@@ -134,7 +134,7 @@ Clusters enable grouped retrieval without full graph traversal.
 
 ---
 
-## WI-P4-2: SkillEdge Entity + Migration
+## WI-P4-2: SkillEdge Entity + Migration (DONE)
 
 ### Problem
 
@@ -210,7 +210,7 @@ No LLM required for edge creation in Phase 4.
 
 ---
 
-## WI-P4-3: SkillCompileCache Entity + Migration
+## WI-P4-3: SkillCompileCache Entity + Migration (DONE)
 
 ### Problem
 
@@ -292,7 +292,7 @@ When any of these inputs change, the hash changes, and recompilation is triggere
 
 ---
 
-## WI-P4-4: Skill `compileHash` Field on SkillFile
+## WI-P4-4: Skill `compileHash` Field on SkillFile (DONE)
 
 ### Problem
 
@@ -336,7 +336,7 @@ compileHash?: string  // SHA-256 of content at last extraction
 
 ---
 
-## WI-P4-5: Node Extraction Pipeline (Core Engine)
+## WI-P4-5: Node Extraction Pipeline (Core Engine) (DONE)
 
 ### Problem
 
@@ -470,16 +470,16 @@ Save extracted nodes, edges, and update `compileHash` in a single transaction:
 
 ### Checklist
 
--   [ ] Create `SkillNodeExtractor` class with 8-stage pipeline
--   [ ] Implement Stage 1 (Load): collect `RawSkillInput` from SkillFile + SkillAssets
--   [ ] Implement Stage 2 (Parse): markdown heading detection, block splitting
--   [ ] Implement Stage 3 (Normalize): bullet normalization, whitespace cleanup
--   [ ] Implement Stage 4 (Segment): bullet → sentence → paragraph splitting
--   [ ] Implement Stage 5 (Classify): deterministic pattern-based type assignment
--   [ ] Implement Stage 6 (Prioritize): default priority weight assignment by type
--   [ ] Implement Stage 7 (Link): keyword-overlap edge creation heuristic
--   [ ] Implement Stage 8 (Persist): transactional save of nodes + edges + compileHash
--   [ ] Wire extraction into `createSkillFile()` and `updateSkillFile()` in skill-files service
+-   [x] Create `SkillNodeExtractor` class with 8-stage pipeline
+-   [x] Implement Stage 1 (Load): collect `RawSkillInput` from SkillFile + SkillAssets
+-   [x] Implement Stage 2 (Parse): markdown heading detection, block splitting
+-   [x] Implement Stage 3 (Normalize): bullet normalization, whitespace cleanup
+-   [x] Implement Stage 4 (Segment): bullet → sentence → paragraph splitting
+-   [x] Implement Stage 5 (Classify): deterministic pattern-based type assignment
+-   [x] Implement Stage 6 (Prioritize): default priority weight assignment by type
+-   [x] Implement Stage 7 (Link): keyword-overlap edge creation heuristic
+-   [x] Implement Stage 8 (Persist): transactional save of nodes + edges + compileHash
+-   [x] Wire extraction into `createSkillFile()` and `updateSkillFile()` in skill-files service
 -   [ ] Ensure extraction is idempotent (re-running produces identical results)
 -   [ ] Ensure old nodes/edges are cleaned up before re-extraction
 -   [ ] Add cluster assignment logic (tone, platform, asset, constraint, output, identity, process)
@@ -496,7 +496,7 @@ Save extracted nodes, edges, and update `compileHash` in a single transaction:
 
 ---
 
-## WI-P4-6: Node-Aware Compilation
+## WI-P4-6: Node-Aware Compilation (DONE)
 
 ### Problem
 
@@ -601,7 +601,7 @@ If a skill file has no extracted nodes (e.g. older skills not yet processed):
 
 ---
 
-## WI-P4-7: Node-Aware Retrieval
+## WI-P4-7: Node-Aware Retrieval (DONE)
 
 ### Problem
 
@@ -677,7 +677,7 @@ This replaces the file-level `retrieveRelevantAssets()` from Phase 3 when nodes 
 
 ---
 
-## WI-P4-8: Skill File Save Triggers Extraction
+## WI-P4-8: Skill File Save Triggers Extraction (DONE)
 
 ### Problem
 
