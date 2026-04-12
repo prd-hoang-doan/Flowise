@@ -185,4 +185,24 @@ Returns `{ nodes: SkillNode[], edges: SkillEdge[] }` for the given file.
 -   [ ] Collapsible node content for long entries
 -   [ ] Edge display: show connected node titles inline
 
-Shall I proceed with implementation?
+---
+
+All done. Here's a summary of what was built:
+
+Backend (index.ts, index.ts, index.ts):
+
+GET /:folderId/files/:id/nodes — returns { nodes, edges } for a skill file
+POST /:folderId/files/:id/re-extract — forces re-extraction and returns updated nodes/edges
+API Client (skillfiles.js):
+
+getSkillFileNodes(folderId, fileId)
+reExtractNodes(folderId, fileId)
+UI (SkillFolderEditorDialog.jsx):
+
+New "Nodes" tab with badge showing node count
+Summary stats bar — color-coded chips per type (Role, Rules, Instructions, Knowledge, Assets) + edge count + Re-extract button
+Grouped node cards by type (role→rule→behavior→knowledge→asset), each showing:
+Color-coded type badge + priority + cluster + title + order index
+Content with expand/collapse for long entries
+Trigger keywords as tag chips
+Edge connections with direction arrows and target node titles
