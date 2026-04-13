@@ -9,10 +9,12 @@ import { SkillEdge } from '../../database/entities/SkillEdge'
 import { SkillFile } from '../../database/entities/SkillFile'
 import { SkillAsset } from '../../database/entities/SkillAsset'
 import { SkillCompileCache } from '../../database/entities/SkillCompileCache'
+import { SkillFolder } from '../../database/entities/SkillFolder'
 import { InternalFlowiseError } from '../../errors/internalFlowiseError'
 import { getErrorMessage } from '../../errors/utils'
 import { getRunningExpressApp } from '../../utils/getRunningExpressApp'
 import { extract, computeHash, RawSkillInput } from './extractor'
+import skillEmbeddingsService from '../skill-embeddings'
 
 /**
  * Run the extraction pipeline for a skill file.
@@ -99,6 +101,30 @@ const extractNodes = async (skillFileId: string, folderId: string, workspaceId: 
             // Update compileHash on the skill file
             await manager.update(SkillFile, { id: skillFileId }, { compileHash: result.compileHash })
         })
+
+        // Generate embeddings for extracted nodes (non-blocking)
+        try {
+            const folder = await appServer.AppDataSource.getRepository(SkillFolder).findOneBy({ id: folderId, workspaceId })
+            if (folder?.embeddingModelConfig) {
+                const embeddingConfig = JSON.parse(folder.embeddingModelConfig)
+                if (embeddingConfig && embeddingConfig.name) {
+                    // Load persisted nodes (they have IDs assigned after save)
+                    const persistedNodes = await appServer.AppDataSource.getRepository(SkillNode).find({
+                        where: { skillFileId, workspaceId }
+                    })
+                    await skillEmbeddingsService.embedNodesForFile(
+                        skillFileId,
+                        folderId,
+                        persistedNodes,
+                        embeddingConfig,
+                        appServer.AppDataSource,
+                        workspaceId
+                    )
+                }
+            }
+        } catch {
+            // Embedding failure does not block node extraction
+        }
     } catch (error) {
         // Extraction errors should not block file save — log and continue
         console.error(`[SkillNodeExtractor] Extraction failed for file ${skillFileId}: ${getErrorMessage(error)}`)
@@ -147,6 +173,13 @@ const deleteBySkillFileId = async (skillFileId: string, workspaceId: string): Pr
     try {
         const appServer = getRunningExpressApp()
         await appServer.AppDataSource.transaction(async (manager) => {
+            // Delete embeddings first (FK on nodeId)
+            try {
+                const { SkillNodeEmbedding } = await import('../../database/entities/SkillNodeEmbedding')
+                await manager.delete(SkillNodeEmbedding, { skillFileId, workspaceId })
+            } catch {
+                // Table may not exist yet
+            }
             await manager.delete(SkillEdge, { skillFileId, workspaceId })
             await manager.delete(SkillNode, { skillFileId, workspaceId })
             try {

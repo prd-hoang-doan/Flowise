@@ -125,7 +125,9 @@ export interface ISkillFolder {
     color: string
     iconSrc?: string
     description?: string
+    mode?: string
     captionModelConfig?: string
+    embeddingModelConfig?: string
     updatedDate: Date
     createdDate: Date
     workspaceId: string
@@ -193,6 +195,19 @@ export interface ISkillCompileCache {
     compiledPrompt: string
     tokenCount: number
     executionMode: string
+    createdDate: Date
+    workspaceId: string
+}
+
+export interface ISkillNodeEmbedding {
+    id: string
+    nodeId: string
+    skillFileId: string
+    folderId: string
+    embedding: string
+    dimension: number
+    modelId: string
+    contentHash: string
     createdDate: Date
     workspaceId: string
 }

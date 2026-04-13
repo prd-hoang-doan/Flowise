@@ -24,6 +24,7 @@ import { SkillAsset } from './SkillAsset'
 import { SkillNode } from './SkillNode'
 import { SkillEdge } from './SkillEdge'
 import { SkillCompileCache } from './SkillCompileCache'
+import { SkillNodeEmbedding } from './SkillNodeEmbedding'
 import { LoginActivity, WorkspaceShared, WorkspaceUsers } from '../../enterprise/database/entities/EnterpriseEntities'
 import { User } from '../../enterprise/database/entities/user.entity'
 import { Organization } from '../../enterprise/database/entities/organization.entity'
@@ -65,6 +66,7 @@ export const entities = {
     SkillNode,
     SkillEdge,
     SkillCompileCache,
+    SkillNodeEmbedding,
     Organization,
     Role,
     OrganizationUser,

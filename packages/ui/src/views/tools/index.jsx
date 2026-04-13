@@ -224,9 +224,15 @@ const Tools = () => {
         setShowSkillEditorDialog(true)
     }
 
-    const onSkillFolderConfirm = () => {
+    const onSkillFolderConfirm = (createdFolder) => {
         setShowSkillFolderDialog(false)
         refreshSkillFolders(skillsCurrentPage, skillsPageLimit)
+
+        // Auto-open editor for advanced/dedicated modes so user can configure LLM
+        if (createdFolder && (createdFolder.mode === 'advanced' || createdFolder.mode === 'dedicated')) {
+            setSelectedSkillFolder(createdFolder)
+            setShowSkillEditorDialog(true)
+        }
     }
 
     const [search, setSearch] = useState('')

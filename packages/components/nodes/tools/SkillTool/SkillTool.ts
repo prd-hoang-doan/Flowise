@@ -8,10 +8,11 @@ import {
     SkillAssetInput,
     SkillNodeInput,
     SkillEdgeInput,
-    NodeCompileConfig
+    NodeCompileConfig,
+    NodeEmbeddingInput
 } from './compiler/types'
 import { compileFromNodes, computeCompileHash } from './compiler/nodeCompiler'
-import { retrieveRelevantNodes } from './compiler/retriever'
+import { retrieveRelevantNodes } from './compiler/semanticRetriever'
 
 export { MultimodalContentPart, MULTIMODAL_CONTENT_KEY }
 
@@ -28,6 +29,10 @@ class SkillFileTool extends Tool {
     private fileAssets: SkillAssetInput[]
     private nodeCompileConfig: NodeCompileConfig | null
     private maxRetrievedNodes: number
+    // Embedding fields (Phase 5)
+    private embeddings: NodeEmbeddingInput[]
+    private embeddingModelConfig: ICommonObject | null
+    private embeddingModelInstance: any | null
 
     constructor(
         fields: ToolParams & {
@@ -42,6 +47,8 @@ class SkillFileTool extends Tool {
             fileAssets?: SkillAssetInput[]
             nodeCompileConfig?: NodeCompileConfig | null
             maxRetrievedNodes?: number
+            embeddings?: NodeEmbeddingInput[]
+            embeddingModelConfig?: ICommonObject | null
         }
     ) {
         super(fields)
@@ -56,12 +63,43 @@ class SkillFileTool extends Tool {
         this.fileAssets = fields.fileAssets ?? []
         this.nodeCompileConfig = fields.nodeCompileConfig ?? null
         this.maxRetrievedNodes = fields.maxRetrievedNodes ?? 20
+        this.embeddings = fields.embeddings ?? []
+        this.embeddingModelConfig = fields.embeddingModelConfig ?? null
+        this.embeddingModelInstance = null
+    }
+
+    /**
+     * Generate query embedding using the configured embedding model.
+     * Returns null if no model is configured or the call fails.
+     */
+    private async generateQueryEmbedding(query: string): Promise<number[] | null> {
+        if (!this.embeddingModelConfig || !this.embeddingModelConfig.name) return null
+        if (!this.embeddings.length) return null
+
+        try {
+            // Lazy-init the embedding model instance (cache across calls)
+            if (!this.embeddingModelInstance) {
+                const { createEmbeddingInstance } = await import('./compiler/embeddingAdapter')
+                this.embeddingModelInstance = await createEmbeddingInstance(this.embeddingModelConfig)
+            }
+            const result = await this.embeddingModelInstance.embedQuery(query)
+            return result
+        } catch {
+            // Embedding failure — degrade to keyword-only
+            return null
+        }
     }
 
     async _call(input: string): Promise<string> {
         // Node-aware retrieval path: select relevant nodes based on user query
         if (this.nodes && this.nodes.length > 0 && this.nodeCompileConfig) {
-            const relevantNodes = retrieveRelevantNodes(input, this.nodes, this.edges || [], this.maxRetrievedNodes)
+            // Generate query embedding (if model config available)
+            const queryEmbedding = await this.generateQueryEmbedding(input)
+
+            const relevantNodes = retrieveRelevantNodes(input, this.nodes, this.edges || [], this.embeddings, queryEmbedding, {
+                maxNodes: this.maxRetrievedNodes
+            })
+
             const { compiledPrompt, multimodalPayload } = compileFromNodes(
                 this.skillName,
                 this.skillDescription,
@@ -333,6 +371,37 @@ class SkillTool implements INode {
             }
         }
 
+        // Load embeddings for semantic retrieval (Phase 5)
+        let embeddingsByFileId: Record<string, NodeEmbeddingInput[]> = {}
+        if (databaseEntities?.['SkillNodeEmbedding']) {
+            try {
+                const allEmbeddings = await appDataSource.getRepository(databaseEntities['SkillNodeEmbedding']).find({
+                    where: { ...searchOptions, folderId }
+                })
+                for (const emb of allEmbeddings) {
+                    const fileId = emb.skillFileId as string
+                    if (!embeddingsByFileId[fileId]) embeddingsByFileId[fileId] = []
+                    embeddingsByFileId[fileId].push({
+                        nodeId: emb.nodeId as string,
+                        embedding: JSON.parse(emb.embedding as string),
+                        dimension: emb.dimension as number
+                    })
+                }
+            } catch {
+                // SkillNodeEmbedding table may not exist yet
+            }
+        }
+
+        // Parse embedding model config from folder (Phase 5)
+        let embeddingModelConfig: ICommonObject | null = null
+        if ((folder as any).embeddingModelConfig) {
+            try {
+                embeddingModelConfig = JSON.parse((folder as any).embeddingModelConfig)
+            } catch {
+                // Invalid config — skip embedding
+            }
+        }
+
         const nodeCompileConfig: NodeCompileConfig = {
             executionMode,
             maxAssetContext,
@@ -345,6 +414,7 @@ class SkillTool implements INode {
             const fileAssets = assetsByFileId[file.id] || []
             const fileNodes = nodesByFileId[file.id] || []
             const fileEdges = edgesByFileId[file.id] || []
+            const fileEmbeddings = embeddingsByFileId[file.id] || []
 
             let summaryContent: string
             let multimodalContent: MultimodalContentPart[] | null = null
@@ -415,7 +485,9 @@ class SkillTool implements INode {
                 skillName: file.name,
                 skillDescription: file.description || '',
                 fileAssets,
-                nodeCompileConfig: fileNodes.length > 0 ? nodeCompileConfig : null
+                nodeCompileConfig: fileNodes.length > 0 ? nodeCompileConfig : null,
+                embeddings: fileEmbeddings,
+                embeddingModelConfig
             })
             ;(tool as any).fileId = file.id
             return tool

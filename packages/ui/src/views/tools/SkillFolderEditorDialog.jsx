@@ -64,6 +64,7 @@ import {
 // Project imports
 import { Dropdown } from '@/ui-component/dropdown/Dropdown'
 import CaptionModelInputHandler from '@/views/tools/CaptionModelInputHandler'
+import EmbeddingModelInputHandler from '@/views/tools/EmbeddingModelInputHandler'
 import SkillNodeGraph from '@/views/tools/SkillNodeGraph'
 import { initNode, showHideInputParams } from '@/utils/genericHelper'
 import { baseURL } from '@/store/constant'
@@ -205,6 +206,12 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     const [showCaptionSettings, setShowCaptionSettings] = useState(false)
     const [regeneratingAssetId, setRegeneratingAssetId] = useState(null)
 
+    // Embedding model state
+    const [embeddingModelsComponents, setEmbeddingModelsComponents] = useState([])
+    const [embeddingModelsOptions, setEmbeddingModelsOptions] = useState([])
+    const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState({})
+    const [showEmbeddingSettings, setShowEmbeddingSettings] = useState(false)
+
     // Compile preview state
     const [compilePreview, setCompilePreview] = useState(null)
     const [compilePreviewLoading, setCompilePreviewLoading] = useState(false)
@@ -307,6 +314,38 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
             setSelectedCaptionModel({})
         }
     }, [folder?.captionModelConfig])
+
+    // Load available embedding models
+    const loadEmbeddingModels = useCallback(async () => {
+        try {
+            const resp = await skillAssetsApi.getEmbeddingModels()
+            if (resp.data) {
+                setEmbeddingModelsComponents(resp.data)
+                const options = resp.data.map((embModel) => ({
+                    label: embModel.label,
+                    name: embModel.name,
+                    imageSrc: `${baseURL}/api/v1/node-icon/${embModel.name}`
+                }))
+                setEmbeddingModelsOptions(options)
+            }
+        } catch (err) {
+            console.error('Failed to load embedding models:', err)
+        }
+    }, [])
+
+    // Load embedding model config from folder
+    const loadEmbeddingModelConfig = useCallback(() => {
+        if (!folder?.embeddingModelConfig) {
+            setSelectedEmbeddingModel({})
+            return
+        }
+        try {
+            const config = JSON.parse(folder.embeddingModelConfig)
+            setSelectedEmbeddingModel(config || {})
+        } catch {
+            setSelectedEmbeddingModel({})
+        }
+    }, [folder?.embeddingModelConfig])
 
     const loadCompilePreview = useCallback(async () => {
         if (!folder?.id || !activeFileId) {
@@ -418,11 +457,13 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
             loadFiles()
             loadChatModels()
             loadCaptionModelConfig()
+            loadEmbeddingModels()
+            loadEmbeddingModelConfig()
             setActiveFileId(null)
             setActiveFileContent('')
             setDirty(false)
         }
-    }, [show, folder?.id, loadFiles, loadChatModels, loadCaptionModelConfig])
+    }, [show, folder?.id, loadFiles, loadChatModels, loadCaptionModelConfig, loadEmbeddingModels, loadEmbeddingModelConfig])
 
     useEffect(() => {
         if (show) dispatch({ type: SHOW_CANVAS_DIALOG })
@@ -685,6 +726,62 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
         } catch (err) {
             enqueueSnackbar({
                 message: 'Failed to save caption model',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'error',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+        }
+    }
+
+    const handleEmbeddingModelSelect = (newValue) => {
+        if (!newValue) {
+            setSelectedEmbeddingModel({})
+        } else {
+            const foundComponent = embeddingModelsComponents.find((m) => m.name === newValue)
+            if (foundComponent) {
+                const modelId = `${foundComponent.name}_embedding`
+                const clonedComponent = cloneDeep(foundComponent)
+                const initModelData = initNode(clonedComponent, modelId)
+                setSelectedEmbeddingModel(initModelData)
+            }
+        }
+    }
+
+    const handleEmbeddingModelDataChange = ({ inputParam, newValue }) => {
+        setSelectedEmbeddingModel((prevData) => {
+            const updatedData = { ...prevData }
+            updatedData.inputs[inputParam.name] = newValue
+            updatedData.inputParams = showHideInputParams(updatedData)
+            return updatedData
+        })
+    }
+
+    const saveEmbeddingModelConfig = async () => {
+        if (!folder?.id) return
+        try {
+            const configToSave = Object.keys(selectedEmbeddingModel).length > 0 ? JSON.stringify(selectedEmbeddingModel) : null
+            await skillFoldersApi.updateSkillFolder(folder.id, { embeddingModelConfig: configToSave })
+            enqueueSnackbar({
+                message: 'Embedding model saved',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'success',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+        } catch (err) {
+            enqueueSnackbar({
+                message: 'Failed to save embedding model',
                 options: {
                     key: new Date().getTime() + Math.random(),
                     variant: 'error',
@@ -969,6 +1066,93 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                 <Button variant='outlined' size='small' startIcon={<IconPlus size={16} />} onClick={createNewFile}>
                                     New File
                                 </Button>
+                            )}
+                            {/* Mode-aware setup guidance */}
+                            {folder?.mode === 'advanced' && !folder?.captionModelConfig && (
+                                <Box
+                                    sx={{
+                                        mt: 2,
+                                        p: 2,
+                                        borderRadius: 2,
+                                        border: '1px solid',
+                                        borderColor: 'warning.main',
+                                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 152, 0, 0.08)' : 'rgba(255, 152, 0, 0.05)',
+                                        maxWidth: 400,
+                                        textAlign: 'center'
+                                    }}
+                                >
+                                    <Typography variant='subtitle2' fontWeight={600} sx={{ mb: 0.5 }}>
+                                        Set up AI Captioning
+                                    </Typography>
+                                    <Typography variant='body2' color='text.secondary' sx={{ mb: 1.5 }}>
+                                        You chose &quot;Add media with AI&quot;. Configure a caption model to auto-generate descriptions for
+                                        uploaded assets.
+                                    </Typography>
+                                    <Button
+                                        variant='outlined'
+                                        size='small'
+                                        color='warning'
+                                        startIcon={<IconSettings size={16} />}
+                                        onClick={() => {
+                                            setViewMode('assets')
+                                            setShowCaptionSettings(true)
+                                        }}
+                                    >
+                                        Configure Caption Model
+                                    </Button>
+                                </Box>
+                            )}
+                            {folder?.mode === 'dedicated' && (!folder?.captionModelConfig || !folder?.embeddingModelConfig) && (
+                                <Box
+                                    sx={{
+                                        mt: 2,
+                                        p: 2,
+                                        borderRadius: 2,
+                                        border: '1px solid',
+                                        borderColor: 'info.main',
+                                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(33, 150, 243, 0.08)' : 'rgba(33, 150, 243, 0.05)',
+                                        maxWidth: 400,
+                                        textAlign: 'center'
+                                    }}
+                                >
+                                    <Typography variant='subtitle2' fontWeight={600} sx={{ mb: 0.5 }}>
+                                        Set up AI Models
+                                    </Typography>
+                                    <Typography variant='body2' color='text.secondary' sx={{ mb: 1.5 }}>
+                                        You chose &quot;Build full AI workflow&quot;. Configure your models to enable smart retrieval and AI
+                                        captioning.
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                                        {!folder?.captionModelConfig && (
+                                            <Button
+                                                variant='outlined'
+                                                size='small'
+                                                color='info'
+                                                startIcon={<IconSettings size={16} />}
+                                                onClick={() => {
+                                                    setViewMode('assets')
+                                                    setShowCaptionSettings(true)
+                                                }}
+                                            >
+                                                Caption Model
+                                            </Button>
+                                        )}
+                                        {!folder?.embeddingModelConfig && (
+                                            <Button
+                                                variant='outlined'
+                                                size='small'
+                                                color='info'
+                                                startIcon={<IconSettings size={16} />}
+                                                onClick={() => {
+                                                    setViewMode('assets')
+                                                    setShowEmbeddingSettings(true)
+                                                }}
+                                            >
+                                                Embedding Model
+                                            </Button>
+                                        )}
+                                    </Box>
+                                </Box>
                             )}
                         </Box>
                     ) : (
@@ -1770,6 +1954,89 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                                     sx={{ mt: 1.5, textTransform: 'none', borderRadius: 20 }}
                                                 >
                                                     Save Caption Model
+                                                </Button>
+                                            </Box>
+                                        )}
+                                    </Box>
+
+                                    {/* Embedding model settings */}
+                                    <Box
+                                        sx={{
+                                            mb: 2,
+                                            border: 1,
+                                            borderColor: 'divider',
+                                            borderRadius: 1,
+                                            overflow: 'hidden'
+                                        }}
+                                    >
+                                        <Box
+                                            sx={{
+                                                px: 2,
+                                                py: 1,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                cursor: 'pointer',
+                                                bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                                                '&:hover': {
+                                                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'
+                                                }
+                                            }}
+                                            onClick={() => setShowEmbeddingSettings(!showEmbeddingSettings)}
+                                        >
+                                            <IconSettings size={16} style={{ marginRight: 8 }} />
+                                            <Typography variant='body2' sx={{ fontWeight: 500, flex: 1 }}>
+                                                Embedding Model
+                                            </Typography>
+                                            <Typography variant='caption' color='textSecondary'>
+                                                {selectedEmbeddingModel?.name
+                                                    ? selectedEmbeddingModel.label || selectedEmbeddingModel.name
+                                                    : 'Not configured'}
+                                            </Typography>
+                                        </Box>
+                                        {showEmbeddingSettings && (
+                                            <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'row' }}>
+                                                    <Typography variant='body2'>Select Model</Typography>
+                                                </div>
+                                                <Dropdown
+                                                    key={JSON.stringify(selectedEmbeddingModel)}
+                                                    name='embeddingModel'
+                                                    options={embeddingModelsOptions ?? []}
+                                                    onSelect={handleEmbeddingModelSelect}
+                                                    value={selectedEmbeddingModel?.name || 'choose an option'}
+                                                />
+
+                                                {selectedEmbeddingModel && Object.keys(selectedEmbeddingModel).length > 0 && (
+                                                    <Box
+                                                        sx={{
+                                                            mt: 1,
+                                                            border: 1,
+                                                            borderColor: theme.palette.grey[900] + 25,
+                                                            borderRadius: 2
+                                                        }}
+                                                    >
+                                                        {showHideInputParams(selectedEmbeddingModel)
+                                                            .filter((inputParam) => !inputParam.hidden && inputParam.display !== false)
+                                                            .map((inputParam, index) => (
+                                                                <EmbeddingModelInputHandler
+                                                                    key={index}
+                                                                    inputParam={inputParam}
+                                                                    data={selectedEmbeddingModel}
+                                                                    onNodeDataChange={handleEmbeddingModelDataChange}
+                                                                />
+                                                            ))}
+                                                    </Box>
+                                                )}
+
+                                                <Button
+                                                    fullWidth
+                                                    variant='outlined'
+                                                    size='small'
+                                                    onClick={saveEmbeddingModelConfig}
+                                                    startIcon={<IconDeviceFloppy size={16} />}
+                                                    sx={{ mt: 1.5, textTransform: 'none', borderRadius: 20 }}
+                                                >
+                                                    Save Embedding Model
                                                 </Button>
                                             </Box>
                                         )}

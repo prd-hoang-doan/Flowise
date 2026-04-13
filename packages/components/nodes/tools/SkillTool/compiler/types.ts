@@ -135,3 +135,35 @@ export interface NodeCompileConfig {
     maxDocumentChars: number
     maxTokenBudget: number
 }
+
+// --- Phase 5: Embedding & Semantic Retrieval ---
+
+export interface NodeEmbeddingInput {
+    nodeId: string
+    embedding: number[] // deserialized vector
+    dimension: number
+}
+
+export interface RetrievalConfig {
+    maxNodes: number // default 20
+    semanticWeight: number // default 0.6
+    keywordWeight: number // default 0.25
+    priorityWeight: number // default 0.15
+    minSemanticScore: number // default 0.3
+}
+
+export const DEFAULT_RETRIEVAL_CONFIG: RetrievalConfig = {
+    maxNodes: 20,
+    semanticWeight: 0.6,
+    keywordWeight: 0.25,
+    priorityWeight: 0.15,
+    minSemanticScore: 0.3
+}
+
+export const TYPE_TAGS: Record<string, string> = {
+    role: 'ROLE',
+    rule: 'RULE',
+    behavior: 'DO',
+    knowledge: 'KNOW',
+    asset: 'ASSET'
+}

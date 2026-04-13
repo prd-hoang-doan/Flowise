@@ -17,6 +17,8 @@ const regenerateCaption = (folderId, assetId) => client.post(`/skill-folders/${f
 
 const getChatModels = () => client.get('/assistants/components/chatmodels')
 
+const getEmbeddingModels = () => client.get('/document-store/components/embeddings')
+
 export default {
     uploadSkillAsset,
     getAllSkillAssets,
@@ -24,5 +26,6 @@ export default {
     updateSkillAssetCaption,
     deleteSkillAsset,
     regenerateCaption,
-    getChatModels
+    getChatModels,
+    getEmbeddingModels
 }

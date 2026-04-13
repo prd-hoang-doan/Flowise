@@ -69,6 +69,7 @@ import { SkillAsset } from '../database/entities/SkillAsset'
 import { SkillNode } from '../database/entities/SkillNode'
 import { SkillEdge } from '../database/entities/SkillEdge'
 import { SkillCompileCache } from '../database/entities/SkillCompileCache'
+import { SkillNodeEmbedding } from '../database/entities/SkillNodeEmbedding'
 
 export const QUESTION_VAR_PREFIX = 'question'
 export const FILE_ATTACHMENT_PREFIX = 'file_attachment'
@@ -114,7 +115,8 @@ export const databaseEntities: IDatabaseEntity = {
     SkillAsset: SkillAsset,
     SkillNode: SkillNode,
     SkillEdge: SkillEdge,
-    SkillCompileCache: SkillCompileCache
+    SkillCompileCache: SkillCompileCache,
+    SkillNodeEmbedding: SkillNodeEmbedding
 }
 
 /**
