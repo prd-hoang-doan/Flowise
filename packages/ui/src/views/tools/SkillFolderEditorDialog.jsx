@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom'
 import { cloneDeep } from 'lodash'
 import PropTypes from 'prop-types'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { enqueueSnackbar as enqueueSnackbarAction, closeSnackbar as closeSnackbarAction } from '@/store/actions'
 import { useEditor, EditorContent } from '@tiptap/react'
@@ -33,7 +33,13 @@ import {
     Toolbar,
     Chip,
     Collapse,
-    CircularProgress
+    CircularProgress,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogContentText,
+    DialogActions,
+    Breadcrumbs
 } from '@mui/material'
 import { useTheme, styled } from '@mui/material/styles'
 
@@ -49,6 +55,7 @@ import {
     IconDotsVertical,
     IconDeviceFloppy,
     IconChevronRight,
+    IconFolder,
     IconPhoto,
     IconUpload,
     IconRefresh,
@@ -184,6 +191,12 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     const enqueueSnackbar = (...args) => dispatch(enqueueSnackbarAction(...args))
     const closeSnackbar = (...args) => dispatch(closeSnackbarAction(...args))
 
+    // Local folder state — syncs from prop but can be updated locally from API responses
+    const [localFolder, setLocalFolder] = useState(folder)
+    useEffect(() => {
+        setLocalFolder(folder)
+    }, [folder])
+
     const [files, setFiles] = useState([])
     const [activeFileId, setActiveFileId] = useState(null)
     const [activeFileContent, setActiveFileContent] = useState('')
@@ -224,13 +237,38 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     const [reExtracting, setReExtracting] = useState(false)
     const [expandedNodeIds, setExpandedNodeIds] = useState(new Set())
     const [nodesDisplayMode, setNodesDisplayMode] = useState('list') // 'list' | 'graph'
+    const [deleteFolderDialogOpen, setDeleteFolderDialogOpen] = useState(false)
+    const [showSettings, setShowSettings] = useState(false)
+
+    // Tab visibility based on folder mode
+    // simple: Source + Preview only
+    // advanced: Source + Preview + Assets + Summary
+    // dedicated: All tabs
+    const visibleTabs = useMemo(() => {
+        const mode = localFolder?.mode || 'simple'
+        const tabs = ['edit', 'preview']
+        if (mode === 'advanced' || mode === 'dedicated') {
+            tabs.push('assets', 'summary')
+        }
+        if (mode === 'dedicated') {
+            tabs.push('nodes')
+        }
+        return tabs
+    }, [localFolder?.mode])
+
+    const DEFAULT_SKILL_PLACEHOLDER = `---
+name: My Skill
+description: A brief description of what this skill does.
+---
+Start writing your skill in Markdown
+`
 
     const editor = useEditor(
         {
             extensions: [
                 StarterKit.configure({ codeBlock: false }),
                 TiptapMarkdown,
-                Placeholder.configure({ placeholder: 'Start writing your skill in Markdown…' }),
+                Placeholder.configure({ placeholder: DEFAULT_SKILL_PLACEHOLDER }),
                 CodeBlockLowlight.configure({ lowlight })
             ],
             content: activeFileContent || '',
@@ -250,13 +288,13 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
 
     const autoSave = useCallback(
         async (editorInstance) => {
-            if (!activeFileId || !folder?.id) return
+            if (!activeFileId || !localFolder?.id) return
             const ed = editorInstance || editor
             if (!ed) return
             const markdown = ed.getMarkdown()
             try {
                 setSaving(true)
-                await skillFilesApi.updateSkillFile(folder.id, activeFileId, { content: markdown })
+                await skillFilesApi.updateSkillFile(localFolder.id, activeFileId, { content: markdown })
                 setDirty(false)
             } catch (err) {
                 console.error('Auto-save failed:', err)
@@ -264,7 +302,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                 setSaving(false)
             }
         },
-        [activeFileId, folder?.id, editor]
+        [activeFileId, localFolder?.id, editor]
     )
 
     const manualSave = useCallback(async () => {
@@ -274,14 +312,14 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
 
     // Load files when dialog opens
     const loadFiles = useCallback(async () => {
-        if (!folder?.id) return
+        if (!localFolder?.id) return
         try {
-            const resp = await skillFilesApi.getAllSkillFiles(folder.id)
+            const resp = await skillFilesApi.getAllSkillFiles(localFolder.id)
             setFiles(resp.data || [])
         } catch (err) {
             console.error('Failed to load files:', err)
         }
-    }, [folder?.id])
+    }, [localFolder?.id])
 
     // Load available chat models for captioning
     const loadChatModels = useCallback(async () => {
@@ -303,17 +341,17 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
 
     // Load caption model config from folder
     const loadCaptionModelConfig = useCallback(() => {
-        if (!folder?.captionModelConfig) {
+        if (!localFolder?.captionModelConfig) {
             setSelectedCaptionModel({})
             return
         }
         try {
-            const config = JSON.parse(folder.captionModelConfig)
+            const config = JSON.parse(localFolder.captionModelConfig)
             setSelectedCaptionModel(config || {})
         } catch {
             setSelectedCaptionModel({})
         }
-    }, [folder?.captionModelConfig])
+    }, [localFolder?.captionModelConfig])
 
     // Load available embedding models
     const loadEmbeddingModels = useCallback(async () => {
@@ -335,26 +373,26 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
 
     // Load embedding model config from folder
     const loadEmbeddingModelConfig = useCallback(() => {
-        if (!folder?.embeddingModelConfig) {
+        if (!localFolder?.embeddingModelConfig) {
             setSelectedEmbeddingModel({})
             return
         }
         try {
-            const config = JSON.parse(folder.embeddingModelConfig)
+            const config = JSON.parse(localFolder.embeddingModelConfig)
             setSelectedEmbeddingModel(config || {})
         } catch {
             setSelectedEmbeddingModel({})
         }
-    }, [folder?.embeddingModelConfig])
+    }, [localFolder?.embeddingModelConfig])
 
     const loadCompilePreview = useCallback(async () => {
-        if (!folder?.id || !activeFileId) {
+        if (!localFolder?.id || !activeFileId) {
             setCompilePreview(null)
             return
         }
         setCompilePreviewLoading(true)
         try {
-            const resp = await skillFilesApi.getCompilePreview(folder.id, activeFileId)
+            const resp = await skillFilesApi.getCompilePreview(localFolder.id, activeFileId)
             setCompilePreview(resp.data || null)
         } catch (err) {
             console.error('Failed to load compile preview:', err)
@@ -362,7 +400,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
         } finally {
             setCompilePreviewLoading(false)
         }
-    }, [folder?.id, activeFileId])
+    }, [localFolder?.id, activeFileId])
 
     useEffect(() => {
         if (activeFileId && viewMode === 'summary') {
@@ -370,15 +408,22 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
         }
     }, [activeFileId, viewMode, loadCompilePreview])
 
+    // Reset viewMode if current tab is not visible for the folder mode
+    useEffect(() => {
+        if (!visibleTabs.includes(viewMode)) {
+            setViewMode('edit')
+        }
+    }, [visibleTabs, viewMode])
+
     const loadNodes = useCallback(async () => {
-        if (!folder?.id || !activeFileId) {
+        if (!localFolder?.id || !activeFileId) {
             setSkillNodes([])
             setSkillEdges([])
             return
         }
         setNodesLoading(true)
         try {
-            const resp = await skillFilesApi.getSkillFileNodes(folder.id, activeFileId)
+            const resp = await skillFilesApi.getSkillFileNodes(localFolder.id, activeFileId)
             setSkillNodes(resp.data?.nodes || [])
             setSkillEdges(resp.data?.edges || [])
         } catch (err) {
@@ -388,7 +433,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
         } finally {
             setNodesLoading(false)
         }
-    }, [folder?.id, activeFileId])
+    }, [localFolder?.id, activeFileId])
 
     useEffect(() => {
         if (activeFileId && viewMode === 'nodes') {
@@ -397,10 +442,10 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     }, [activeFileId, viewMode, loadNodes])
 
     const handleReExtract = async () => {
-        if (!folder?.id || !activeFileId) return
+        if (!localFolder?.id || !activeFileId) return
         setReExtracting(true)
         try {
-            const resp = await skillFilesApi.reExtractNodes(folder.id, activeFileId)
+            const resp = await skillFilesApi.reExtractNodes(localFolder.id, activeFileId)
             setSkillNodes(resp.data?.nodes || [])
             setSkillEdges(resp.data?.edges || [])
             setExpandedNodeIds(new Set())
@@ -453,7 +498,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     const NODE_TYPE_ORDER = ['role', 'rule', 'behavior', 'knowledge', 'asset']
 
     useEffect(() => {
-        if (show && folder?.id) {
+        if (show && localFolder?.id) {
             loadFiles()
             loadChatModels()
             loadCaptionModelConfig()
@@ -463,7 +508,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
             setActiveFileContent('')
             setDirty(false)
         }
-    }, [show, folder?.id, loadFiles, loadChatModels, loadCaptionModelConfig, loadEmbeddingModels, loadEmbeddingModelConfig])
+    }, [show, localFolder?.id, loadFiles, loadChatModels, loadCaptionModelConfig, loadEmbeddingModels, loadEmbeddingModelConfig])
 
     useEffect(() => {
         if (show) dispatch({ type: SHOW_CANVAS_DIALOG })
@@ -479,16 +524,17 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                 if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
                 const markdown = editor.getMarkdown()
                 try {
-                    await skillFilesApi.updateSkillFile(folder.id, activeFileId, { content: markdown })
+                    await skillFilesApi.updateSkillFile(localFolder.id, activeFileId, { content: markdown })
                 } catch (err) {
                     console.error('Save before switch failed:', err)
                 }
             }
             setDirty(false)
+            setShowSettings(false)
 
             // Load file content
             try {
-                const resp = await skillFilesApi.getSkillFile(folder.id, fileId)
+                const resp = await skillFilesApi.getSkillFile(localFolder.id, fileId)
                 const fileData = resp.data
                 setActiveFileId(fileData.id)
                 setActiveFileContent(fileData.content || '')
@@ -496,13 +542,13 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                 console.error('Failed to load file:', err)
             }
         },
-        [dirty, editor, activeFileId, folder?.id]
+        [dirty, editor, activeFileId, localFolder?.id]
     )
 
     // Create new file
     const createNewFile = async () => {
         try {
-            const resp = await skillFilesApi.createSkillFile(folder.id, {
+            const resp = await skillFilesApi.createSkillFile(localFolder.id, {
                 name: `untitled-${files.length + 1}`,
                 content: ''
             })
@@ -510,6 +556,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                 await loadFiles()
                 setActiveFileId(resp.data.id)
                 setActiveFileContent('')
+                setShowSettings(false)
             }
         } catch (err) {
             enqueueSnackbar({
@@ -530,7 +577,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     // Delete file
     const deleteFile = async (fileId) => {
         try {
-            await skillFilesApi.deleteSkillFile(folder.id, fileId)
+            await skillFilesApi.deleteSkillFile(localFolder.id, fileId)
             if (activeFileId === fileId) {
                 setActiveFileId(null)
                 setActiveFileContent('')
@@ -573,7 +620,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
             return
         }
         try {
-            await skillFilesApi.updateSkillFile(folder.id, renamingFileId, { name: renameValue.trim() })
+            await skillFilesApi.updateSkillFile(localFolder.id, renamingFileId, { name: renameValue.trim() })
             await loadFiles()
         } catch (err) {
             console.error('Rename failed:', err)
@@ -592,18 +639,18 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
 
     // === Asset Management ===
     const loadAssets = useCallback(async () => {
-        if (!folder?.id || !activeFileId) {
+        if (!localFolder?.id || !activeFileId) {
             setAssets([])
             return
         }
         try {
-            const resp = await skillAssetsApi.getAllSkillAssets(folder.id, activeFileId)
+            const resp = await skillAssetsApi.getAllSkillAssets(localFolder.id, activeFileId)
             setAssets(resp.data || [])
         } catch (err) {
             console.error('Failed to load assets:', err)
             setAssets([])
         }
-    }, [folder?.id, activeFileId])
+    }, [localFolder?.id, activeFileId])
 
     useEffect(() => {
         if (activeFileId && viewMode === 'assets') {
@@ -613,14 +660,14 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
 
     const handleAssetUpload = async (event) => {
         const uploadedFiles = event.target.files
-        if (!uploadedFiles || uploadedFiles.length === 0 || !folder?.id || !activeFileId) return
+        if (!uploadedFiles || uploadedFiles.length === 0 || !localFolder?.id || !activeFileId) return
 
         setUploadingAsset(true)
         try {
             for (const file of uploadedFiles) {
                 const formData = new FormData()
                 formData.append('files', file)
-                await skillAssetsApi.uploadSkillAsset(folder.id, activeFileId, formData)
+                await skillAssetsApi.uploadSkillAsset(localFolder.id, activeFileId, formData)
             }
             await loadAssets()
             enqueueSnackbar({
@@ -656,7 +703,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
 
     const handleDeleteAsset = async (assetId) => {
         try {
-            await skillAssetsApi.deleteSkillAsset(folder.id, assetId)
+            await skillAssetsApi.deleteSkillAsset(localFolder.id, assetId)
             await loadAssets()
         } catch (err) {
             enqueueSnackbar({
@@ -676,7 +723,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
 
     const handleCaptionUpdate = async (assetId, caption) => {
         try {
-            await skillAssetsApi.updateSkillAssetCaption(folder.id, assetId, caption)
+            await skillAssetsApi.updateSkillAssetCaption(localFolder.id, assetId, caption)
             await loadAssets()
         } catch (err) {
             console.error('Failed to update caption:', err)
@@ -707,10 +754,11 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     }
 
     const saveCaptionModelConfig = async () => {
-        if (!folder?.id) return
+        if (!localFolder?.id) return
         try {
             const configToSave = Object.keys(selectedCaptionModel).length > 0 ? JSON.stringify(selectedCaptionModel) : null
-            await skillFoldersApi.updateSkillFolder(folder.id, { captionModelConfig: configToSave })
+            const resp = await skillFoldersApi.updateSkillFolder(localFolder.id, { captionModelConfig: configToSave })
+            if (resp.data) setLocalFolder(resp.data)
             enqueueSnackbar({
                 message: 'Caption model saved',
                 options: {
@@ -763,10 +811,11 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     }
 
     const saveEmbeddingModelConfig = async () => {
-        if (!folder?.id) return
+        if (!localFolder?.id) return
         try {
             const configToSave = Object.keys(selectedEmbeddingModel).length > 0 ? JSON.stringify(selectedEmbeddingModel) : null
-            await skillFoldersApi.updateSkillFolder(folder.id, { embeddingModelConfig: configToSave })
+            const resp = await skillFoldersApi.updateSkillFolder(localFolder.id, { embeddingModelConfig: configToSave })
+            if (resp.data) setLocalFolder(resp.data)
             enqueueSnackbar({
                 message: 'Embedding model saved',
                 options: {
@@ -798,7 +847,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
     const handleRegenerateCaption = async (assetId) => {
         setRegeneratingAssetId(assetId)
         try {
-            await skillAssetsApi.regenerateCaption(folder.id, assetId)
+            await skillAssetsApi.regenerateCaption(localFolder.id, assetId)
             await loadAssets()
             enqueueSnackbar({
                 message: 'Caption regenerated successfully',
@@ -833,13 +882,48 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
         }
     }
 
+    const handleDeleteFolder = async () => {
+        if (!localFolder?.id) return
+        try {
+            await skillFoldersApi.deleteSkillFolder(localFolder.id)
+            setDeleteFolderDialogOpen(false)
+            enqueueSnackbar({
+                message: 'Skill folder deleted',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'success',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+            if (onFolderUpdated) onFolderUpdated()
+            onCancel()
+        } catch (err) {
+            enqueueSnackbar({
+                message: 'Failed to delete skill folder',
+                options: {
+                    key: new Date().getTime() + Math.random(),
+                    variant: 'error',
+                    action: (key) => (
+                        <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                            <IconX />
+                        </Button>
+                    )
+                }
+            })
+        }
+    }
+
     const handleClose = async () => {
         // Save before closing
         if (dirty && editor && activeFileId) {
             if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
             const markdown = editor.getMarkdown()
             try {
-                await skillFilesApi.updateSkillFile(folder.id, activeFileId, { content: markdown })
+                await skillFilesApi.updateSkillFile(localFolder.id, activeFileId, { content: markdown })
             } catch (err) {
                 console.error('Save before close failed:', err)
             }
@@ -882,18 +966,73 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                     </IconButton>
                 </Tooltip>
                 <Divider orientation='vertical' flexItem sx={{ mx: 0.5 }} />
-                {activeFile ? (
-                    <>
-                        <IconFile size={16} />
-                        <Typography variant='body2' noWrap sx={{ flex: 1, fontWeight: 500 }}>
-                            {activeFile.name}
+                <Breadcrumbs
+                    separator={<IconChevronRight size={14} />}
+                    sx={{ flex: 1, minWidth: 0, '& .MuiBreadcrumbs-ol': { flexWrap: 'nowrap' } }}
+                >
+                    <Box
+                        component='span'
+                        onClick={() => {
+                            setActiveFileId(null)
+                            setActiveFileContent('')
+                            setDirty(false)
+                            setShowSettings(false)
+                        }}
+                        sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 0.5,
+                            cursor: 'pointer',
+                            color: activeFile || showSettings ? 'text.secondary' : 'text.primary',
+                            fontWeight: activeFile || showSettings ? 400 : 500,
+                            fontSize: '0.875rem',
+                            '&:hover': { color: 'primary.main', textDecoration: 'underline' }
+                        }}
+                    >
+                        <IconFolder size={16} />
+                        <Typography variant='body2' noWrap sx={{ fontWeight: 'inherit' }}>
+                            {folder?.name || 'Skill Folder'}
                         </Typography>
-                    </>
-                ) : (
-                    <Typography variant='body2' noWrap sx={{ flex: 1, color: 'text.secondary' }}>
-                        {folder?.name || 'Skill Folder'}
-                    </Typography>
-                )}
+                    </Box>
+                    {showSettings && (
+                        <Box
+                            component='span'
+                            sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 0.5,
+                                color: 'text.primary',
+                                fontWeight: 500,
+                                fontSize: '0.875rem',
+                                minWidth: 0
+                            }}
+                        >
+                            <IconSettings size={16} />
+                            <Typography variant='body2' noWrap sx={{ fontWeight: 500 }}>
+                                Settings
+                            </Typography>
+                        </Box>
+                    )}
+                    {activeFile && !showSettings && (
+                        <Box
+                            component='span'
+                            sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 0.5,
+                                color: 'text.primary',
+                                fontWeight: 500,
+                                fontSize: '0.875rem',
+                                minWidth: 0
+                            }}
+                        >
+                            <IconFile size={16} />
+                            <Typography variant='body2' noWrap sx={{ fontWeight: 500 }}>
+                                {activeFile.name}
+                            </Typography>
+                        </Box>
+                    )}
+                </Breadcrumbs>
                 {activeFileId && (
                     <>
                         {saving && (
@@ -911,11 +1050,6 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                 Saved
                             </Typography>
                         )}
-                        <Tooltip title='Delete file'>
-                            <IconButton size='small' onClick={() => deleteFile(activeFileId)} sx={{ color: 'error.main' }}>
-                                <IconTrash size={18} />
-                            </IconButton>
-                        </Tooltip>
                         <Tooltip title='Save Changes'>
                             <span>
                                 <Button
@@ -930,10 +1064,54 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                 </Button>
                             </span>
                         </Tooltip>
+                        <Tooltip title='Delete file'>
+                            <span>
+                                <Button
+                                    variant='outlined'
+                                    size='small'
+                                    color='error'
+                                    onClick={() => deleteFile(activeFileId)}
+                                    startIcon={<IconTrash size={16} />}
+                                    sx={{ textTransform: 'none' }}
+                                >
+                                    Delete
+                                </Button>
+                            </span>
+                        </Tooltip>
                     </>
                 )}
-                <Button variant='text' size='small' onClick={handleClose} sx={{ textTransform: 'none', ml: 0.5 }}>
-                    Done
+                <Button
+                    variant='outlined'
+                    size='small'
+                    startIcon={<IconSettings size={16} />}
+                    onClick={() => {
+                        setShowSettings(true)
+                        setActiveFileId(null)
+                        setActiveFileContent('')
+                        setDirty(false)
+                    }}
+                    sx={{ textTransform: 'none', ml: 0.5 }}
+                >
+                    Settings
+                </Button>
+                {!activeFileId && (
+                    <Tooltip title='Delete localFolder'>
+                        <span>
+                            <Button
+                                variant='outlined'
+                                size='small'
+                                color='error'
+                                onClick={() => setDeleteFolderDialogOpen(true)}
+                                startIcon={<IconTrash size={16} />}
+                                sx={{ textTransform: 'none' }}
+                            >
+                                Delete
+                            </Button>
+                        </span>
+                    </Tooltip>
+                )}
+                <Button variant='outlined' size='small' onClick={handleClose} sx={{ textTransform: 'none', ml: 0.5 }}>
+                    Close
                 </Button>
             </Toolbar>
 
@@ -1045,9 +1223,281 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                     </List>
                 </Box>
 
-                {/* Right Area: Editor or Preview */}
+                {/* Right Area: Settings, Editor or Preview */}
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                    {!activeFileId ? (
+                    {showSettings ? (
+                        <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
+                            <Typography variant='h6' sx={{ fontWeight: 600, mb: 3 }}>
+                                Folder Settings
+                            </Typography>
+
+                            {/* Mode Selection */}
+                            <Box sx={{ mb: 3 }}>
+                                <Typography variant='subtitle2' sx={{ fontWeight: 600, mb: 1 }}>
+                                    Folder Mode
+                                </Typography>
+                                <Typography variant='body2' color='text.secondary' sx={{ mb: 1.5 }}>
+                                    Choose how this skill folder operates. Changing the mode will affect which features are available.
+                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                                    {[
+                                        {
+                                            value: 'simple',
+                                            label: 'Simple',
+                                            description: 'Write content only — markdown editor and preview'
+                                        },
+                                        {
+                                            value: 'advanced',
+                                            label: 'Advanced',
+                                            description: 'Add media with AI captioning'
+                                        },
+                                        {
+                                            value: 'dedicated',
+                                            label: 'Dedicated',
+                                            description: 'Full AI workflow with embeddings and nodes'
+                                        }
+                                    ].map((opt) => (
+                                        <Box
+                                            key={opt.value}
+                                            onClick={async () => {
+                                                if (localFolder?.mode === opt.value) return
+                                                try {
+                                                    const resp = await skillFoldersApi.updateSkillFolder(localFolder.id, {
+                                                        mode: opt.value
+                                                    })
+                                                    if (resp.data) setLocalFolder(resp.data)
+                                                    enqueueSnackbar({
+                                                        message: `Mode changed to ${opt.label}`,
+                                                        options: {
+                                                            key: new Date().getTime() + Math.random(),
+                                                            variant: 'success',
+                                                            action: (key) => (
+                                                                <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                                                                    <IconX />
+                                                                </Button>
+                                                            )
+                                                        }
+                                                    })
+                                                } catch (err) {
+                                                    enqueueSnackbar({
+                                                        message: 'Failed to update mode',
+                                                        options: {
+                                                            key: new Date().getTime() + Math.random(),
+                                                            variant: 'error',
+                                                            action: (key) => (
+                                                                <Button style={{ color: 'white' }} onClick={() => closeSnackbar(key)}>
+                                                                    <IconX />
+                                                                </Button>
+                                                            )
+                                                        }
+                                                    })
+                                                }
+                                            }}
+                                            sx={{
+                                                flex: '1 1 180px',
+                                                maxWidth: 240,
+                                                border: 2,
+                                                borderColor: (localFolder?.mode || 'simple') === opt.value ? 'primary.main' : 'divider',
+                                                borderRadius: 2,
+                                                p: 2,
+                                                cursor: 'pointer',
+                                                bgcolor:
+                                                    (localFolder?.mode || 'simple') === opt.value
+                                                        ? theme.palette.mode === 'dark'
+                                                            ? 'rgba(33, 150, 243, 0.08)'
+                                                            : 'rgba(33, 150, 243, 0.04)'
+                                                        : 'transparent',
+                                                '&:hover': {
+                                                    borderColor: 'primary.main',
+                                                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
+                                                },
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            <Typography variant='body2' sx={{ fontWeight: 600 }}>
+                                                {opt.label}
+                                            </Typography>
+                                            <Typography variant='caption' color='text.secondary'>
+                                                {opt.description}
+                                            </Typography>
+                                        </Box>
+                                    ))}
+                                </Box>
+                            </Box>
+
+                            <Divider sx={{ my: 2 }} />
+
+                            {/* Caption Model Config */}
+                            {(localFolder?.mode === 'advanced' || localFolder?.mode === 'dedicated') && (
+                                <Box
+                                    sx={{
+                                        mb: 2,
+                                        border: 1,
+                                        borderColor: 'divider',
+                                        borderRadius: 2,
+                                        overflow: 'hidden'
+                                    }}
+                                >
+                                    <Box
+                                        sx={{
+                                            px: 2,
+                                            py: 1,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            cursor: 'pointer',
+                                            bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                                            '&:hover': {
+                                                bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'
+                                            }
+                                        }}
+                                        onClick={() => setShowCaptionSettings(!showCaptionSettings)}
+                                    >
+                                        <IconSettings size={16} style={{ marginRight: 8 }} />
+                                        <Typography variant='body2' sx={{ fontWeight: 500, flex: 1 }}>
+                                            Vision Captioning Model
+                                        </Typography>
+                                        <Typography variant='caption' color='textSecondary'>
+                                            {selectedCaptionModel?.name
+                                                ? selectedCaptionModel.label || selectedCaptionModel.name
+                                                : 'Not configured'}
+                                        </Typography>
+                                    </Box>
+                                    {showCaptionSettings && (
+                                        <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'row' }}>
+                                                <Typography variant='body2'>Select Model</Typography>
+                                            </div>
+                                            <Dropdown
+                                                key={JSON.stringify(selectedCaptionModel)}
+                                                name='captionModel'
+                                                options={chatModelsOptions ?? []}
+                                                onSelect={handleCaptionModelSelect}
+                                                value={selectedCaptionModel?.name || 'choose an option'}
+                                            />
+
+                                            {selectedCaptionModel && Object.keys(selectedCaptionModel).length > 0 && (
+                                                <Box
+                                                    sx={{
+                                                        mt: 1,
+                                                        border: 1,
+                                                        borderColor: theme.palette.grey[900] + 25,
+                                                        borderRadius: 2
+                                                    }}
+                                                >
+                                                    {showHideInputParams(selectedCaptionModel)
+                                                        .filter((inputParam) => !inputParam.hidden && inputParam.display !== false)
+                                                        .map((inputParam, index) => (
+                                                            <CaptionModelInputHandler
+                                                                key={index}
+                                                                inputParam={inputParam}
+                                                                data={selectedCaptionModel}
+                                                                onNodeDataChange={handleCaptionModelDataChange}
+                                                            />
+                                                        ))}
+                                                </Box>
+                                            )}
+
+                                            <Button
+                                                fullWidth
+                                                variant='outlined'
+                                                size='small'
+                                                onClick={saveCaptionModelConfig}
+                                                startIcon={<IconDeviceFloppy size={16} />}
+                                                sx={{ mt: 1.5, textTransform: 'none', borderRadius: 20 }}
+                                            >
+                                                Save Caption Model
+                                            </Button>
+                                        </Box>
+                                    )}
+                                </Box>
+                            )}
+
+                            {/* Embedding Model Config */}
+                            {localFolder?.mode === 'dedicated' && (
+                                <Box
+                                    sx={{
+                                        mb: 2,
+                                        border: 1,
+                                        borderColor: 'divider',
+                                        borderRadius: 2,
+                                        overflow: 'hidden'
+                                    }}
+                                >
+                                    <Box
+                                        sx={{
+                                            px: 2,
+                                            py: 1,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            cursor: 'pointer',
+                                            bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                                            '&:hover': {
+                                                bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'
+                                            }
+                                        }}
+                                        onClick={() => setShowEmbeddingSettings(!showEmbeddingSettings)}
+                                    >
+                                        <IconSettings size={16} style={{ marginRight: 8 }} />
+                                        <Typography variant='body2' sx={{ fontWeight: 500, flex: 1 }}>
+                                            Embedding Model
+                                        </Typography>
+                                        <Typography variant='caption' color='textSecondary'>
+                                            {selectedEmbeddingModel?.name
+                                                ? selectedEmbeddingModel.label || selectedEmbeddingModel.name
+                                                : 'Not configured'}
+                                        </Typography>
+                                    </Box>
+                                    {showEmbeddingSettings && (
+                                        <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'row' }}>
+                                                <Typography variant='body2'>Select Model</Typography>
+                                            </div>
+                                            <Dropdown
+                                                key={JSON.stringify(selectedEmbeddingModel)}
+                                                name='embeddingModel'
+                                                options={embeddingModelsOptions ?? []}
+                                                onSelect={handleEmbeddingModelSelect}
+                                                value={selectedEmbeddingModel?.name || 'choose an option'}
+                                            />
+
+                                            {selectedEmbeddingModel && Object.keys(selectedEmbeddingModel).length > 0 && (
+                                                <Box
+                                                    sx={{
+                                                        mt: 1,
+                                                        border: 1,
+                                                        borderColor: theme.palette.grey[900] + 25,
+                                                        borderRadius: 2
+                                                    }}
+                                                >
+                                                    {showHideInputParams(selectedEmbeddingModel)
+                                                        .filter((inputParam) => !inputParam.hidden && inputParam.display !== false)
+                                                        .map((inputParam, index) => (
+                                                            <EmbeddingModelInputHandler
+                                                                key={index}
+                                                                inputParam={inputParam}
+                                                                data={selectedEmbeddingModel}
+                                                                onNodeDataChange={handleEmbeddingModelDataChange}
+                                                            />
+                                                        ))}
+                                                </Box>
+                                            )}
+
+                                            <Button
+                                                fullWidth
+                                                variant='outlined'
+                                                size='small'
+                                                onClick={saveEmbeddingModelConfig}
+                                                startIcon={<IconDeviceFloppy size={16} />}
+                                                sx={{ mt: 1.5, textTransform: 'none', borderRadius: 20 }}
+                                            >
+                                                Save Embedding Model
+                                            </Button>
+                                        </Box>
+                                    )}
+                                </Box>
+                            )}
+                        </Box>
+                    ) : !activeFileId ? (
                         <Box
                             sx={{
                                 flex: 1,
@@ -1068,7 +1518,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                 </Button>
                             )}
                             {/* Mode-aware setup guidance */}
-                            {folder?.mode === 'advanced' && !folder?.captionModelConfig && (
+                            {localFolder?.mode === 'advanced' && !localFolder?.captionModelConfig && (
                                 <Box
                                     sx={{
                                         mt: 2,
@@ -1094,7 +1544,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                         color='warning'
                                         startIcon={<IconSettings size={16} />}
                                         onClick={() => {
-                                            setViewMode('assets')
+                                            setShowSettings(true)
                                             setShowCaptionSettings(true)
                                         }}
                                     >
@@ -1102,58 +1552,60 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                     </Button>
                                 </Box>
                             )}
-                            {folder?.mode === 'dedicated' && (!folder?.captionModelConfig || !folder?.embeddingModelConfig) && (
-                                <Box
-                                    sx={{
-                                        mt: 2,
-                                        p: 2,
-                                        borderRadius: 2,
-                                        border: '1px solid',
-                                        borderColor: 'info.main',
-                                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(33, 150, 243, 0.08)' : 'rgba(33, 150, 243, 0.05)',
-                                        maxWidth: 400,
-                                        textAlign: 'center'
-                                    }}
-                                >
-                                    <Typography variant='subtitle2' fontWeight={600} sx={{ mb: 0.5 }}>
-                                        Set up AI Models
-                                    </Typography>
-                                    <Typography variant='body2' color='text.secondary' sx={{ mb: 1.5 }}>
-                                        You chose &quot;Build full AI workflow&quot;. Configure your models to enable smart retrieval and AI
-                                        captioning.
-                                    </Typography>
-                                    <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
-                                        {!folder?.captionModelConfig && (
-                                            <Button
-                                                variant='outlined'
-                                                size='small'
-                                                color='info'
-                                                startIcon={<IconSettings size={16} />}
-                                                onClick={() => {
-                                                    setViewMode('assets')
-                                                    setShowCaptionSettings(true)
-                                                }}
-                                            >
-                                                Caption Model
-                                            </Button>
-                                        )}
-                                        {!folder?.embeddingModelConfig && (
-                                            <Button
-                                                variant='outlined'
-                                                size='small'
-                                                color='info'
-                                                startIcon={<IconSettings size={16} />}
-                                                onClick={() => {
-                                                    setViewMode('assets')
-                                                    setShowEmbeddingSettings(true)
-                                                }}
-                                            >
-                                                Embedding Model
-                                            </Button>
-                                        )}
+                            {localFolder?.mode === 'dedicated' &&
+                                (!localFolder?.captionModelConfig || !localFolder?.embeddingModelConfig) && (
+                                    <Box
+                                        sx={{
+                                            mt: 2,
+                                            p: 2,
+                                            borderRadius: 2,
+                                            border: '1px solid',
+                                            borderColor: 'info.main',
+                                            bgcolor:
+                                                theme.palette.mode === 'dark' ? 'rgba(33, 150, 243, 0.08)' : 'rgba(33, 150, 243, 0.05)',
+                                            maxWidth: 400,
+                                            textAlign: 'center'
+                                        }}
+                                    >
+                                        <Typography variant='subtitle2' fontWeight={600} sx={{ mb: 0.5 }}>
+                                            Set up AI Models
+                                        </Typography>
+                                        <Typography variant='body2' color='text.secondary' sx={{ mb: 1.5 }}>
+                                            You chose &quot;Build full AI workflow&quot;. Configure your models to enable smart retrieval
+                                            and AI captioning.
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                                            {!localFolder?.captionModelConfig && (
+                                                <Button
+                                                    variant='outlined'
+                                                    size='small'
+                                                    color='info'
+                                                    startIcon={<IconSettings size={16} />}
+                                                    onClick={() => {
+                                                        setShowSettings(true)
+                                                        setShowCaptionSettings(true)
+                                                    }}
+                                                >
+                                                    Caption Model
+                                                </Button>
+                                            )}
+                                            {!localFolder?.embeddingModelConfig && (
+                                                <Button
+                                                    variant='outlined'
+                                                    size='small'
+                                                    color='info'
+                                                    startIcon={<IconSettings size={16} />}
+                                                    onClick={() => {
+                                                        setShowSettings(true)
+                                                        setShowEmbeddingSettings(true)
+                                                    }}
+                                                >
+                                                    Embedding Model
+                                                </Button>
+                                            )}
+                                        </Box>
                                     </Box>
-                                </Box>
-                            )}
+                                )}
                         </Box>
                     ) : (
                         <>
@@ -1168,52 +1620,58 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                         <IconEye size={14} style={{ marginRight: 4 }} />
                                         Preview
                                     </ToggleButton>
-                                    <ToggleButton value='assets' sx={{ px: 1.5, py: 0.25, textTransform: 'none', fontSize: '0.8rem' }}>
-                                        <IconPhoto size={14} style={{ marginRight: 4 }} />
-                                        Assets
-                                        {assets.length > 0 && (
-                                            <Box
-                                                component='span'
-                                                sx={{
-                                                    ml: 0.5,
-                                                    px: 0.5,
-                                                    py: 0,
-                                                    fontSize: '0.7rem',
-                                                    borderRadius: '8px',
-                                                    bgcolor: 'primary.main',
-                                                    color: 'primary.contrastText',
-                                                    lineHeight: 1.5
-                                                }}
-                                            >
-                                                {assets.length}
-                                            </Box>
-                                        )}
-                                    </ToggleButton>
-                                    <ToggleButton value='summary' sx={{ px: 1.5, py: 0.25, textTransform: 'none', fontSize: '0.8rem' }}>
-                                        <IconFileAnalytics size={14} style={{ marginRight: 4 }} />
-                                        Summary
-                                    </ToggleButton>
-                                    <ToggleButton value='nodes' sx={{ px: 1.5, py: 0.25, textTransform: 'none', fontSize: '0.8rem' }}>
-                                        <IconHierarchy2 size={14} style={{ marginRight: 4 }} />
-                                        Nodes
-                                        {skillNodes.length > 0 && (
-                                            <Box
-                                                component='span'
-                                                sx={{
-                                                    ml: 0.5,
-                                                    px: 0.5,
-                                                    py: 0,
-                                                    fontSize: '0.7rem',
-                                                    borderRadius: '8px',
-                                                    bgcolor: 'primary.main',
-                                                    color: 'primary.contrastText',
-                                                    lineHeight: 1.5
-                                                }}
-                                            >
-                                                {skillNodes.length}
-                                            </Box>
-                                        )}
-                                    </ToggleButton>
+                                    {visibleTabs.includes('assets') && (
+                                        <ToggleButton value='assets' sx={{ px: 1.5, py: 0.25, textTransform: 'none', fontSize: '0.8rem' }}>
+                                            <IconPhoto size={14} style={{ marginRight: 4 }} />
+                                            Assets
+                                            {assets.length > 0 && (
+                                                <Box
+                                                    component='span'
+                                                    sx={{
+                                                        ml: 0.5,
+                                                        px: 0.5,
+                                                        py: 0,
+                                                        fontSize: '0.7rem',
+                                                        borderRadius: '8px',
+                                                        bgcolor: 'primary.main',
+                                                        color: 'primary.contrastText',
+                                                        lineHeight: 1.5
+                                                    }}
+                                                >
+                                                    {assets.length}
+                                                </Box>
+                                            )}
+                                        </ToggleButton>
+                                    )}
+                                    {visibleTabs.includes('summary') && (
+                                        <ToggleButton value='summary' sx={{ px: 1.5, py: 0.25, textTransform: 'none', fontSize: '0.8rem' }}>
+                                            <IconFileAnalytics size={14} style={{ marginRight: 4 }} />
+                                            Summary
+                                        </ToggleButton>
+                                    )}
+                                    {visibleTabs.includes('nodes') && (
+                                        <ToggleButton value='nodes' sx={{ px: 1.5, py: 0.25, textTransform: 'none', fontSize: '0.8rem' }}>
+                                            <IconHierarchy2 size={14} style={{ marginRight: 4 }} />
+                                            Nodes
+                                            {skillNodes.length > 0 && (
+                                                <Box
+                                                    component='span'
+                                                    sx={{
+                                                        ml: 0.5,
+                                                        px: 0.5,
+                                                        py: 0,
+                                                        fontSize: '0.7rem',
+                                                        borderRadius: '8px',
+                                                        bgcolor: 'primary.main',
+                                                        color: 'primary.contrastText',
+                                                        lineHeight: 1.5
+                                                    }}
+                                                >
+                                                    {skillNodes.length}
+                                                </Box>
+                                            )}
+                                        </ToggleButton>
+                                    )}
                                 </ToggleButtonGroup>
                             </Box>
 
@@ -1876,172 +2334,6 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                         </Typography>
                                     </Box>
 
-                                    {/* Caption Model Settings */}
-                                    <Box
-                                        sx={{
-                                            border: 1,
-                                            borderColor: 'divider',
-                                            borderRadius: 2,
-                                            mb: 2,
-                                            overflow: 'hidden'
-                                        }}
-                                    >
-                                        <Box
-                                            sx={{
-                                                px: 2,
-                                                py: 1,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                cursor: 'pointer',
-                                                bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-                                                '&:hover': {
-                                                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'
-                                                }
-                                            }}
-                                            onClick={() => setShowCaptionSettings(!showCaptionSettings)}
-                                        >
-                                            <IconSettings size={16} style={{ marginRight: 8 }} />
-                                            <Typography variant='body2' sx={{ fontWeight: 500, flex: 1 }}>
-                                                Vision Captioning Model
-                                            </Typography>
-                                            <Typography variant='caption' color='textSecondary'>
-                                                {selectedCaptionModel?.name
-                                                    ? selectedCaptionModel.label || selectedCaptionModel.name
-                                                    : 'Not configured'}
-                                            </Typography>
-                                        </Box>
-                                        {showCaptionSettings && (
-                                            <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
-                                                <div style={{ display: 'flex', flexDirection: 'row' }}>
-                                                    <Typography variant='body2'>Select Model</Typography>
-                                                </div>
-                                                <Dropdown
-                                                    key={JSON.stringify(selectedCaptionModel)}
-                                                    name='captionModel'
-                                                    options={chatModelsOptions ?? []}
-                                                    onSelect={handleCaptionModelSelect}
-                                                    value={selectedCaptionModel?.name || 'choose an option'}
-                                                />
-
-                                                {selectedCaptionModel && Object.keys(selectedCaptionModel).length > 0 && (
-                                                    <Box
-                                                        sx={{
-                                                            mt: 1,
-                                                            border: 1,
-                                                            borderColor: theme.palette.grey[900] + 25,
-                                                            borderRadius: 2
-                                                        }}
-                                                    >
-                                                        {showHideInputParams(selectedCaptionModel)
-                                                            .filter((inputParam) => !inputParam.hidden && inputParam.display !== false)
-                                                            .map((inputParam, index) => (
-                                                                <CaptionModelInputHandler
-                                                                    key={index}
-                                                                    inputParam={inputParam}
-                                                                    data={selectedCaptionModel}
-                                                                    onNodeDataChange={handleCaptionModelDataChange}
-                                                                />
-                                                            ))}
-                                                    </Box>
-                                                )}
-
-                                                <Button
-                                                    fullWidth
-                                                    variant='outlined'
-                                                    size='small'
-                                                    onClick={saveCaptionModelConfig}
-                                                    startIcon={<IconDeviceFloppy size={16} />}
-                                                    sx={{ mt: 1.5, textTransform: 'none', borderRadius: 20 }}
-                                                >
-                                                    Save Caption Model
-                                                </Button>
-                                            </Box>
-                                        )}
-                                    </Box>
-
-                                    {/* Embedding model settings */}
-                                    <Box
-                                        sx={{
-                                            mb: 2,
-                                            border: 1,
-                                            borderColor: 'divider',
-                                            borderRadius: 1,
-                                            overflow: 'hidden'
-                                        }}
-                                    >
-                                        <Box
-                                            sx={{
-                                                px: 2,
-                                                py: 1,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                cursor: 'pointer',
-                                                bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-                                                '&:hover': {
-                                                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'
-                                                }
-                                            }}
-                                            onClick={() => setShowEmbeddingSettings(!showEmbeddingSettings)}
-                                        >
-                                            <IconSettings size={16} style={{ marginRight: 8 }} />
-                                            <Typography variant='body2' sx={{ fontWeight: 500, flex: 1 }}>
-                                                Embedding Model
-                                            </Typography>
-                                            <Typography variant='caption' color='textSecondary'>
-                                                {selectedEmbeddingModel?.name
-                                                    ? selectedEmbeddingModel.label || selectedEmbeddingModel.name
-                                                    : 'Not configured'}
-                                            </Typography>
-                                        </Box>
-                                        {showEmbeddingSettings && (
-                                            <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
-                                                <div style={{ display: 'flex', flexDirection: 'row' }}>
-                                                    <Typography variant='body2'>Select Model</Typography>
-                                                </div>
-                                                <Dropdown
-                                                    key={JSON.stringify(selectedEmbeddingModel)}
-                                                    name='embeddingModel'
-                                                    options={embeddingModelsOptions ?? []}
-                                                    onSelect={handleEmbeddingModelSelect}
-                                                    value={selectedEmbeddingModel?.name || 'choose an option'}
-                                                />
-
-                                                {selectedEmbeddingModel && Object.keys(selectedEmbeddingModel).length > 0 && (
-                                                    <Box
-                                                        sx={{
-                                                            mt: 1,
-                                                            border: 1,
-                                                            borderColor: theme.palette.grey[900] + 25,
-                                                            borderRadius: 2
-                                                        }}
-                                                    >
-                                                        {showHideInputParams(selectedEmbeddingModel)
-                                                            .filter((inputParam) => !inputParam.hidden && inputParam.display !== false)
-                                                            .map((inputParam, index) => (
-                                                                <EmbeddingModelInputHandler
-                                                                    key={index}
-                                                                    inputParam={inputParam}
-                                                                    data={selectedEmbeddingModel}
-                                                                    onNodeDataChange={handleEmbeddingModelDataChange}
-                                                                />
-                                                            ))}
-                                                    </Box>
-                                                )}
-
-                                                <Button
-                                                    fullWidth
-                                                    variant='outlined'
-                                                    size='small'
-                                                    onClick={saveEmbeddingModelConfig}
-                                                    startIcon={<IconDeviceFloppy size={16} />}
-                                                    sx={{ mt: 1.5, textTransform: 'none', borderRadius: 20 }}
-                                                >
-                                                    Save Embedding Model
-                                                </Button>
-                                            </Box>
-                                        )}
-                                    </Box>
-
                                     {/* Asset grid */}
                                     {assets.length === 0 ? (
                                         <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -2074,7 +2366,7 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                                                     >
                                                         <Box
                                                             component='img'
-                                                            src={skillAssetsApi.getSkillAssetUrl(folder.id, asset.id)}
+                                                            src={skillAssetsApi.getSkillAssetUrl(localFolder.id, asset.id)}
                                                             alt={asset.filename}
                                                             sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                                                         />
@@ -2167,6 +2459,22 @@ const SkillFolderEditorDialog = ({ show, folder, onCancel, onFolderUpdated }) =>
                     Delete
                 </MenuItem>
             </Menu>
+
+            {/* Delete Folder Confirmation Dialog */}
+            <Dialog open={deleteFolderDialogOpen} onClose={() => setDeleteFolderDialogOpen(false)}>
+                <DialogTitle>Delete Skill Folder</DialogTitle>
+                <DialogContent>
+                    <DialogContentText>
+                        {`Are you sure you want to delete "${localFolder?.name}"? This will permanently delete the localFolder and all its files and assets. This cannot be undone.`}
+                    </DialogContentText>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setDeleteFolderDialogOpen(false)}>Cancel</Button>
+                    <Button onClick={handleDeleteFolder} color='error' variant='contained'>
+                        Delete
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Drawer>
     ) : null
 

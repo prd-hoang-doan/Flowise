@@ -22,6 +22,7 @@ const createSkillFolder = async (req: Request, res: Response, next: NextFunction
         if (body.color !== undefined) folderBody.color = body.color
         if (body.iconSrc !== undefined) folderBody.iconSrc = body.iconSrc
         if (body.description !== undefined) folderBody.description = body.description
+        if (body.mode !== undefined) folderBody.mode = body.mode
         folderBody.workspaceId = workspaceId
 
         const apiResponse = await skillFoldersService.createSkillFolder(folderBody)
@@ -104,6 +105,8 @@ const updateSkillFolder = async (req: Request, res: Response, next: NextFunction
         if (body.iconSrc !== undefined) folderBody.iconSrc = body.iconSrc
         if (body.description !== undefined) folderBody.description = body.description
         if (body.captionModelConfig !== undefined) folderBody.captionModelConfig = body.captionModelConfig
+        if (body.embeddingModelConfig !== undefined) folderBody.embeddingModelConfig = body.embeddingModelConfig
+        if (body.mode !== undefined) folderBody.mode = body.mode
         const apiResponse = await skillFoldersService.updateSkillFolder(req.params.id, folderBody, workspaceId)
         return res.json(apiResponse)
     } catch (error) {

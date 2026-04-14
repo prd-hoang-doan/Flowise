@@ -749,7 +749,7 @@ const SkillFolderDialog = ({ show, dialogProps, onCancel, onConfirm }) => {
                 </Stepper>
             </Box>
             <DialogContent sx={{ px: 3, pt: 2 }}>
-                {activeStep === 0 && <StepChooseGoal goal={goal} onGoalChange={setGoal} />}
+                {activeStep === 0 && <StepChooseGoal goal={goal} onGoalChange={(newGoal) => setGoal(newGoal)} />}
                 {activeStep === 1 && (
                     <StepFolderSetup
                         folderName={folderName}
