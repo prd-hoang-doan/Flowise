@@ -11,8 +11,8 @@ import {
     NodeCompileConfig,
     NodeEmbeddingInput
 } from './compiler/types'
-import { compileFromNodes, computeCompileHash } from './compiler/nodeCompiler'
-import { retrieveRelevantNodes } from './compiler/semanticRetriever'
+import { ICallStrategy, createCallStrategy } from './compiler/callStrategy'
+import { createInitCompileStrategy } from './compiler/initCompileStrategy'
 
 export { MultimodalContentPart, MULTIMODAL_CONTENT_KEY }
 
@@ -33,6 +33,9 @@ class SkillFileTool extends Tool {
     private embeddings: NodeEmbeddingInput[]
     private embeddingModelConfig: ICommonObject | null
     private embeddingModelInstance: any | null
+    // Mode-driven strategy
+    private folderMode: string
+    private strategy: ICallStrategy
 
     constructor(
         fields: ToolParams & {
@@ -50,6 +53,7 @@ class SkillFileTool extends Tool {
             embeddings?: NodeEmbeddingInput[]
             embeddingModelConfig?: ICommonObject | null
             embeddingModelInstance?: any | null
+            folderMode?: string
         }
     ) {
         super(fields)
@@ -67,59 +71,25 @@ class SkillFileTool extends Tool {
         this.embeddings = fields.embeddings ?? []
         this.embeddingModelConfig = fields.embeddingModelConfig ?? null
         this.embeddingModelInstance = fields.embeddingModelInstance ?? null
-    }
-
-    /**
-     * Generate query embedding using the configured embedding model.
-     * Returns null if no model instance is available or the call fails.
-     */
-    private async generateQueryEmbedding(query: string): Promise<number[] | null> {
-        if (!this.embeddingModelInstance) return null
-        if (!this.embeddings.length) return null
-
-        try {
-            console.log(`Generating embedding for query: "${query}" using model ${this.embeddingModelConfig?.name}`)
-            const result = await this.embeddingModelInstance.embedQuery(query)
-            return result
-        } catch (error) {
-            console.log(`Embedding generation failed for query "${query}": ${error}`)
-            return null
-        }
+        this.folderMode = fields.folderMode ?? 'simple'
+        this.strategy = createCallStrategy(this.folderMode)
     }
 
     async _call(input: string): Promise<string> {
-        // Node-aware retrieval path: select relevant nodes based on user query
-        if (this.nodes && this.nodes.length > 0 && this.nodeCompileConfig) {
-            // Generate query embedding (if model config available)
-            const queryEmbedding = await this.generateQueryEmbedding(input)
-
-            const relevantNodes = retrieveRelevantNodes(input, this.nodes, this.edges || [], this.embeddings, queryEmbedding, {
-                maxNodes: this.maxRetrievedNodes
-            })
-
-            const { compiledPrompt, multimodalPayload } = compileFromNodes(
-                this.skillName,
-                this.skillDescription,
-                relevantNodes,
-                this.fileAssets,
-                this.nodeCompileConfig
-            )
-
-            console.log(
-                `Retrieved ${relevantNodes.length} relevant nodes for query "${input}". Compiled prompt length: ${compiledPrompt.length}.`
-            )
-
-            if (this.nodeCompileConfig.executionMode === 'multimodal' && multimodalPayload.length > 0) {
-                return JSON.stringify({ [MULTIMODAL_CONTENT_KEY]: true, content: multimodalPayload })
-            }
-            return compiledPrompt
-        }
-
-        // Backward compat: return pre-compiled content
-        if (this.multimodalContent) {
-            return JSON.stringify({ [MULTIMODAL_CONTENT_KEY]: true, content: this.multimodalContent })
-        }
-        return this.content
+        return this.strategy.execute(input, {
+            content: this.content,
+            multimodalContent: this.multimodalContent,
+            nodes: this.nodes,
+            edges: this.edges,
+            skillName: this.skillName,
+            skillDescription: this.skillDescription,
+            fileAssets: this.fileAssets,
+            nodeCompileConfig: this.nodeCompileConfig,
+            maxRetrievedNodes: this.maxRetrievedNodes,
+            embeddings: this.embeddings,
+            embeddingModelConfig: this.embeddingModelConfig,
+            embeddingModelInstance: this.embeddingModelInstance
+        })
     }
 }
 
@@ -306,8 +276,14 @@ class SkillTool implements INode {
             where: { ...searchOptions, folderId }
         })
 
+        // Determine folder mode — use explicit mode or infer for backward compatibility
+        const folderMode = inferFolderMode(folder as any, databaseEntities)
+        const isAdvancedOrDedicated = folderMode === 'advanced' || folderMode === 'dedicated'
+        const isDedicated = folderMode === 'dedicated'
+
+        // Load assets (advanced + dedicated only)
         let assetsByFileId: Record<string, SkillAssetInput[]> = {}
-        if (databaseEntities?.['SkillAsset']) {
+        if (isAdvancedOrDedicated && databaseEntities?.['SkillAsset']) {
             try {
                 const assets = await appDataSource.getRepository(databaseEntities['SkillAsset']).find({
                     where: { ...searchOptions, folderId }
@@ -326,10 +302,10 @@ class SkillTool implements INode {
         const compiler = new SkillCompiler()
         const compileConfig = { executionMode, maxAssetContext, maxMultimodalAssets, maxDocumentChars }
 
-        // Load nodes and edges for node-aware compilation (Phase 4)
+        // Load nodes and edges for node-aware compilation (dedicated only)
         let nodesByFileId: Record<string, SkillNodeInput[]> = {}
         let edgesByFileId: Record<string, SkillEdgeInput[]> = {}
-        if (databaseEntities?.['SkillNode']) {
+        if (isDedicated && databaseEntities?.['SkillNode']) {
             try {
                 const allNodes = await appDataSource.getRepository(databaseEntities['SkillNode']).find({
                     where: { ...searchOptions, folderId },
@@ -343,7 +319,7 @@ class SkillTool implements INode {
                 // SkillNode table may not exist yet (pre-migration); gracefully degrade
             }
         }
-        if (databaseEntities?.['SkillEdge']) {
+        if (isDedicated && databaseEntities?.['SkillEdge']) {
             try {
                 const allEdges = await appDataSource.getRepository(databaseEntities['SkillEdge']).find({
                     where: { ...searchOptions, folderId }
@@ -357,9 +333,9 @@ class SkillTool implements INode {
             }
         }
 
-        // Check compile cache for node-aware compilations
+        // Check compile cache for node-aware compilations (dedicated only)
         let cacheByFileKey: Record<string, { compiledPrompt: string }> = {}
-        if (databaseEntities?.['SkillCompileCache']) {
+        if (isDedicated && databaseEntities?.['SkillCompileCache']) {
             try {
                 const cacheEntries = await appDataSource.getRepository(databaseEntities['SkillCompileCache']).find({
                     where: { ...searchOptions, folderId, executionMode }
@@ -372,9 +348,9 @@ class SkillTool implements INode {
             }
         }
 
-        // Load embeddings for semantic retrieval (Phase 5)
+        // Load embeddings for semantic retrieval (dedicated only)
         let embeddingsByFileId: Record<string, NodeEmbeddingInput[]> = {}
-        if (databaseEntities?.['SkillNodeEmbedding']) {
+        if (isDedicated && databaseEntities?.['SkillNodeEmbedding']) {
             try {
                 const allEmbeddings = await appDataSource.getRepository(databaseEntities['SkillNodeEmbedding']).find({
                     where: { ...searchOptions, folderId }
@@ -393,17 +369,17 @@ class SkillTool implements INode {
             }
         }
 
-        // Parse embedding model config and create instance (Phase 5)
+        // Parse embedding model config and create instance (dedicated only)
         let embeddingModelConfig: ICommonObject | null = null
         let embeddingModelInstance: any = null
-        if ((folder as any).embeddingModelConfig) {
+        if (isDedicated && (folder as any).embeddingModelConfig) {
             try {
                 embeddingModelConfig = JSON.parse((folder as any).embeddingModelConfig)
             } catch {
                 // Invalid config — skip embedding
             }
         }
-        if (embeddingModelConfig && embeddingModelConfig.name) {
+        if (isDedicated && embeddingModelConfig && embeddingModelConfig.name) {
             try {
                 const { createEmbeddingInstance } = await import('./compiler/embeddingAdapter')
                 embeddingModelInstance = await createEmbeddingInstance(embeddingModelConfig, options)
@@ -420,70 +396,31 @@ class SkillTool implements INode {
             maxTokenBudget: 0 // 0 = unlimited at init; trimming happens at retrieval time
         }
 
+        const initStrategy = createInitCompileStrategy(folderMode, compiler)
+        const cacheRepo =
+            isDedicated && databaseEntities?.['SkillCompileCache']
+                ? appDataSource.getRepository(databaseEntities['SkillCompileCache'])
+                : undefined
+
         return files.map((file: any) => {
             const fileAssets = assetsByFileId[file.id] || []
             const fileNodes = nodesByFileId[file.id] || []
             const fileEdges = edgesByFileId[file.id] || []
             const fileEmbeddings = embeddingsByFileId[file.id] || []
 
-            let summaryContent: string
-            let multimodalContent: MultimodalContentPart[] | null = null
-
-            if (fileNodes.length > 0) {
-                // Node-aware path: check cache first
-                const cacheHash = computeCompileHash(fileNodes, fileAssets, executionMode, maxAssetContext)
-                const cached = cacheByFileKey[`${file.id}:${cacheHash}`]
-
-                if (cached) {
-                    summaryContent = cached.compiledPrompt
-                } else {
-                    // Compile from nodes
-                    const result = compiler.compileForToolFromNodes(
-                        { id: folder.id, name: folder.name, description: folder.description },
-                        { id: file.id, name: file.name, description: file.description, content: file.content },
-                        fileNodes,
-                        fileAssets,
-                        compileConfig
-                    )
-                    summaryContent = result.summaryContent
-                    multimodalContent = result.multimodalContent
-
-                    // Save to cache asynchronously (fire-and-forget)
-                    if (databaseEntities?.['SkillCompileCache']) {
-                        try {
-                            const cacheRepo = appDataSource.getRepository(databaseEntities['SkillCompileCache'])
-                            cacheRepo
-                                .delete({ skillFileId: file.id, executionMode, ...searchOptions })
-                                .then(() => {
-                                    const entry = cacheRepo.create({
-                                        skillFileId: file.id,
-                                        folderId,
-                                        hash: cacheHash,
-                                        compiledPrompt: summaryContent,
-                                        tokenCount: result.tokenEstimate,
-                                        executionMode,
-                                        workspaceId: searchOptions.workspaceId || ''
-                                    })
-                                    cacheRepo.save(entry).catch(() => {})
-                                })
-                                .catch(() => {})
-                        } catch {
-                            // Cache save is best-effort
-                        }
-                    }
-                }
-            } else {
-                // Backward compat: no nodes, use raw content compilation
-                const result = compiler.compileForTool(
-                    { id: folder.id, name: folder.name, description: folder.description },
-                    { id: file.id, name: file.name, description: file.description, content: file.content },
-                    fileAssets,
-                    compileConfig,
-                    files.length
-                )
-                summaryContent = result.summaryContent
-                multimodalContent = result.multimodalContent
-            }
+            const { summaryContent, multimodalContent } = initStrategy.compile({
+                folder: { id: folder.id, name: folder.name, description: folder.description },
+                file: { id: file.id, name: file.name, description: file.description, content: file.content },
+                assets: fileAssets,
+                nodes: fileNodes,
+                compileConfig,
+                totalFileCount: files.length,
+                cacheByFileKey,
+                cacheRepo,
+                searchOptions,
+                folderId,
+                executionMode
+            })
 
             const tool = new SkillFileTool({
                 name: formatToolName(file.name),
@@ -498,12 +435,28 @@ class SkillTool implements INode {
                 nodeCompileConfig: fileNodes.length > 0 ? nodeCompileConfig : null,
                 embeddings: fileEmbeddings,
                 embeddingModelConfig,
-                embeddingModelInstance
+                embeddingModelInstance,
+                folderMode
             })
             ;(tool as any).fileId = file.id
             return tool
         })
     }
+}
+
+/**
+ * Infer folder mode for backward compatibility.
+ * If folder.mode is set, use it directly.
+ * Otherwise infer from available data:
+ *   - nodes exist → 'dedicated'
+ *   - assets exist → 'advanced'
+ *   - otherwise → 'simple'
+ */
+function inferFolderMode(folder: any, databaseEntities: IDatabaseEntity): string {
+    if (folder.mode) return folder.mode
+    if (databaseEntities?.['SkillNode']) return 'dedicated'
+    if (databaseEntities?.['SkillAsset']) return 'advanced'
+    return 'simple'
 }
 
 module.exports = { nodeClass: SkillTool }
