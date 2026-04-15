@@ -49,6 +49,7 @@ class SkillFileTool extends Tool {
             maxRetrievedNodes?: number
             embeddings?: NodeEmbeddingInput[]
             embeddingModelConfig?: ICommonObject | null
+            embeddingModelInstance?: any | null
         }
     ) {
         super(fields)
@@ -65,27 +66,23 @@ class SkillFileTool extends Tool {
         this.maxRetrievedNodes = fields.maxRetrievedNodes ?? 20
         this.embeddings = fields.embeddings ?? []
         this.embeddingModelConfig = fields.embeddingModelConfig ?? null
-        this.embeddingModelInstance = null
+        this.embeddingModelInstance = fields.embeddingModelInstance ?? null
     }
 
     /**
      * Generate query embedding using the configured embedding model.
-     * Returns null if no model is configured or the call fails.
+     * Returns null if no model instance is available or the call fails.
      */
     private async generateQueryEmbedding(query: string): Promise<number[] | null> {
-        if (!this.embeddingModelConfig || !this.embeddingModelConfig.name) return null
+        if (!this.embeddingModelInstance) return null
         if (!this.embeddings.length) return null
 
         try {
-            // Lazy-init the embedding model instance (cache across calls)
-            if (!this.embeddingModelInstance) {
-                const { createEmbeddingInstance } = await import('./compiler/embeddingAdapter')
-                this.embeddingModelInstance = await createEmbeddingInstance(this.embeddingModelConfig)
-            }
+            console.log(`Generating embedding for query: "${query}" using model ${this.embeddingModelConfig?.name}`)
             const result = await this.embeddingModelInstance.embedQuery(query)
             return result
-        } catch {
-            // Embedding failure — degrade to keyword-only
+        } catch (error) {
+            console.log(`Embedding generation failed for query "${query}": ${error}`)
             return null
         }
     }
@@ -106,6 +103,10 @@ class SkillFileTool extends Tool {
                 relevantNodes,
                 this.fileAssets,
                 this.nodeCompileConfig
+            )
+
+            console.log(
+                `Retrieved ${relevantNodes.length} relevant nodes for query "${input}". Compiled prompt length: ${compiledPrompt.length}.`
             )
 
             if (this.nodeCompileConfig.executionMode === 'multimodal' && multimodalPayload.length > 0) {
@@ -392,13 +393,22 @@ class SkillTool implements INode {
             }
         }
 
-        // Parse embedding model config from folder (Phase 5)
+        // Parse embedding model config and create instance (Phase 5)
         let embeddingModelConfig: ICommonObject | null = null
+        let embeddingModelInstance: any = null
         if ((folder as any).embeddingModelConfig) {
             try {
                 embeddingModelConfig = JSON.parse((folder as any).embeddingModelConfig)
             } catch {
                 // Invalid config — skip embedding
+            }
+        }
+        if (embeddingModelConfig && embeddingModelConfig.name) {
+            try {
+                const { createEmbeddingInstance } = await import('./compiler/embeddingAdapter')
+                embeddingModelInstance = await createEmbeddingInstance(embeddingModelConfig, options)
+            } catch (err) {
+                console.log(`Failed to create embedding model instance: ${err}`)
             }
         }
 
@@ -487,7 +497,8 @@ class SkillTool implements INode {
                 fileAssets,
                 nodeCompileConfig: fileNodes.length > 0 ? nodeCompileConfig : null,
                 embeddings: fileEmbeddings,
-                embeddingModelConfig
+                embeddingModelConfig,
+                embeddingModelInstance
             })
             ;(tool as any).fileId = file.id
             return tool
