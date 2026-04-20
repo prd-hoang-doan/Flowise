@@ -1,0 +1,55 @@
+Senior Python Developer — Remote (EU / US)
+===========================================
+
+Team
+----
+Platform Engineering, Data Infrastructure squad. You will report to the
+Engineering Manager and collaborate daily with Data Scientists, SREs,
+and Product Managers.
+
+Responsibilities
+----------------
+- Design, build, and operate Python services that ingest and transform
+  hundreds of millions of events per day.
+- Own an end-to-end data pipeline: from Kafka consumers through
+  transformation jobs on AWS (EMR / EKS) to Snowflake warehouse loads.
+- Write clear, testable Python 3.11+ code: type hints, pytest, mypy,
+  ruff. Review other engineers' PRs with care.
+- Mentor two mid-level engineers and contribute to our engineering
+  blog and internal design-doc reviews.
+
+Required
+--------
+- 5+ years of professional Python experience (8+ preferred for the
+  senior track).
+- Strong SQL. Hands-on experience with at least one OLAP warehouse
+  (Snowflake, BigQuery, or Redshift).
+- Production experience on AWS: IAM, S3, Lambda, ECS, or EKS.
+- Comfortable with infrastructure-as-code (Terraform or Pulumi).
+- Experience with at least one stream-processing framework
+  (Kafka Streams, Flink, Spark Structured Streaming).
+
+Nice to have
+------------
+- Open-source contributions to Python data tooling.
+- Experience with Great Expectations, dbt, or Airflow.
+- Kubernetes operators (Go / Python).
+
+Compensation
+------------
+- Base: $160k–$210k USD (US) / €120k–€160k (EU) depending on level.
+- Equity: 0.02%–0.08% ISOs, 4-year vest, 1-year cliff.
+- Bonus: up to 15% of base, paid annually.
+- Benefits: full health, 401k match up to 6% (US) / pension (EU),
+  unlimited PTO, home-office stipend, conference budget.
+
+Interview process
+-----------------
+1. 45-min recruiter screen.
+2. 60-min technical screen (pair coding in Python).
+3. Virtual onsite: system design, data-pipeline deep dive,
+   behavioral, hiring-manager conversation.
+4. Reference checks + offer.
+
+Keywords: python aws kafka snowflake airflow terraform mypy pytest
+         data engineering streaming etl olap senior platform

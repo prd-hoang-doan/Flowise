@@ -54,6 +54,7 @@ import { AddSkillFileCompileHash1769300000000 } from './1769300000000-AddSkillFi
 import { AddSkillNodeEmbedding1770000000000 } from './1770000000000-AddSkillNodeEmbedding'
 import { AddEmbeddingModelConfig1770100000000 } from './1770100000000-AddEmbeddingModelConfig'
 import { AddSkillFolderMode1770200000000 } from './1770200000000-AddSkillFolderMode'
+import { AddSkillV21771000000000 } from './1771000000000-AddSkillV2'
 import { AddAuthTables1720230151482 } from '../../../enterprise/database/migrations/mariadb/1720230151482-AddAuthTables'
 import { AddWorkspace1725437498242 } from '../../../enterprise/database/migrations/mariadb/1725437498242-AddWorkspace'
 import { AddWorkspaceShared1726654922034 } from '../../../enterprise/database/migrations/mariadb/1726654922034-AddWorkspaceShared'
@@ -133,5 +134,6 @@ export const mariadbMigrations = [
     AddSkillFileCompileHash1769300000000,
     AddSkillNodeEmbedding1770000000000,
     AddEmbeddingModelConfig1770100000000,
-    AddSkillFolderMode1770200000000
+    AddSkillFolderMode1770200000000,
+    AddSkillV21771000000000
 ]

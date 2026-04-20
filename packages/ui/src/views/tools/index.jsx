@@ -13,6 +13,7 @@ import ToolDialog from './ToolDialog'
 import CustomMcpServerDialog from './CustomMcpServerDialog'
 import SkillFolderDialog from './SkillFolderDialog'
 import SkillFolderEditorDialog from './SkillFolderEditorDialog'
+import SkillV2Workspace from '@/views/skills-v2/SkillV2Workspace'
 import ViewHeader from '@/layout/MainLayout/ViewHeader'
 import ErrorBoundary from '@/ErrorBoundary'
 import { ToolsTable } from '@/ui-component/table/ToolsListTable'
@@ -569,7 +570,13 @@ const Tools = () => {
                             onSearchChange={onSearchChange}
                             search={true}
                             searchPlaceholder={
-                                tabValue === 0 ? 'Search Tools' : tabValue === 1 ? 'Search Custom MCP Servers' : 'Search Skill Folders'
+                                tabValue === 0
+                                    ? 'Search Tools'
+                                    : tabValue === 1
+                                    ? 'Search Custom MCP Servers'
+                                    : tabValue === 2
+                                    ? 'Search Skill Folders'
+                                    : 'Search Skills V2'
                             }
                             title='Tools'
                             description='External functions or APIs the agent can use to take action'
@@ -583,10 +590,12 @@ const Tools = () => {
                             <Tab label='Custom Tools' />
                             <Tab label='Custom MCP Servers' />
                             <Tab label='Skills' />
+                            <Tab label='Skills V2' />
                         </Tabs>
                         {tabValue === 0 && renderCustomToolsTab()}
                         {tabValue === 1 && renderMcpServersTab()}
                         {tabValue === 2 && renderSkillsTab()}
+                        {tabValue === 3 && <SkillV2Workspace search={search} />}
                     </Stack>
                 )}
             </MainCard>

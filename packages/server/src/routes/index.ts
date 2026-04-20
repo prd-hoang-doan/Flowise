@@ -27,6 +27,7 @@ import logsRouter from './log'
 import marketplacesRouter from './marketplaces'
 import customMcpServersRouter from './custom-mcp-servers'
 import skillFoldersRouter from './skill-folders'
+import skillsV2Router from './skills-v2'
 import nodeConfigRouter from './node-configs'
 import nodeCustomFunctionRouter from './node-custom-functions'
 import nodeIconRouter from './node-icons'
@@ -128,6 +129,7 @@ router.use('/agentflowv2-generator', agentflowv2GeneratorRouter)
 router.use('/text-to-speech', textToSpeechRouter)
 router.use('/custom-mcp-servers', customMcpServersRouter)
 router.use('/skill-folders', skillFoldersRouter)
+router.use('/skills-v2', skillsV2Router)
 
 router.use('/auth', authRouter)
 router.use('/audit', IdentityManager.checkFeatureByPlan('feat:login-activity'), auditRouter)

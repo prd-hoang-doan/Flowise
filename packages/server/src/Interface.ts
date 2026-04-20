@@ -119,6 +119,20 @@ export interface ITool {
     workspaceId: string
 }
 
+export interface ISkillV2 {
+    id: string
+    workspaceId: string
+    name: string
+    description?: string | null
+    iconSrc?: string | null
+    color?: string | null
+    fileTree: string
+    contentDigest: string
+    publishedBundleId?: string | null
+    createdDate: Date
+    updatedDate: Date
+}
+
 export interface ISkillFolder {
     id: string
     name: string
