@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm'
 import { ICommonObject, IDatabaseEntity, INode, INodeData, INodeOptionsValue, INodeParams } from '../../../src/Interface'
 import { SkillFileTool } from './SkillFileTool'
 import { loadPublishedBundle } from './bundleLoader'
+import { buildCustomToolsFromBundle } from './customToolFactory'
 import {
     buildBashToolDescription,
     buildManifest,
@@ -19,6 +20,7 @@ import {
     buildToolHint,
     classifyKindForTreeNode,
     computeNodePath,
+    extractFrontmatterMetadata,
     formatToolName,
     parseFileTree,
     SkillBundle,
@@ -26,11 +28,11 @@ import {
 } from './utils'
 
 /**
- * Skill (v2) runtime node.
+ * Skill runtime node.
  *
- * Exposes every selected markdown file inside a published `SkillV2` as an
+ * Exposes every selected markdown file inside a published `Skill` as an
  * individual LangChain `Tool`. Compilation already happened at publish time
- * (see `SkillV2Compiler.compileAll` on the server); this node just reads
+ * (see `SkillCompiler.compileAll` on the server); this node just reads
  * the pre-compiled `SkillBundle` and wraps each `entry.content` in a
  * `Tool`.
  *
@@ -43,7 +45,7 @@ import {
  *      against it (python3, node, cat, pdftotext, …).
  *
  *   2. **Fallback (read-only)** — no E2B key, or execution is disabled
- *      via `SKILL_V2_ALLOW_EXEC=false` / the `Enable Sandbox Shell`
+ *      via `SKILL_ALLOW_EXEC=false` / the `Enable Sandbox Shell`
  *      toggle. Only the per-file skill tools are registered; the LLM
  *      sees the compiled markdown verbatim. Any code the skill references
  *      becomes documentation the LLM must reason about by hand.
@@ -66,7 +68,7 @@ class Skill_Tools implements INode {
         this.type = 'Skill'
         this.icon = 'skill.svg'
         this.category = 'Tools'
-        this.description = 'Invoke a published Skill (v2) — one tool per selected markdown file'
+        this.description = 'Invoke a published Skill — one tool per selected markdown file'
         this.inputs = [
             {
                 label: 'Skill',
@@ -95,7 +97,7 @@ class Skill_Tools implements INode {
                 label: 'Exec Timeout (ms)',
                 name: 'execTimeoutMs',
                 description:
-                    'Per-call timeout in milliseconds for the bash tool. Clamped against the server ceiling (SKILL_V2_EXEC_TIMEOUT_MS, default 15000).',
+                    'Per-call timeout in milliseconds for the bash tool. Clamped against the server ceiling (SKILL_EXEC_TIMEOUT_MS, default 15000).',
                 type: 'number',
                 optional: true,
                 additionalParams: true
@@ -110,12 +112,12 @@ class Skill_Tools implements INode {
             try {
                 const appDataSource = options.appDataSource as DataSource
                 const databaseEntities = options.databaseEntities as IDatabaseEntity
-                if (!appDataSource || !databaseEntities?.['SkillV2']) {
+                if (!appDataSource || !databaseEntities?.['Skill']) {
                     return []
                 }
 
                 const searchOptions = options.searchOptions || {}
-                const skills = await appDataSource.getRepository(databaseEntities['SkillV2']).find({
+                const skills = await appDataSource.getRepository(databaseEntities['Skill']).find({
                     where: { ...searchOptions },
                     order: { updatedDate: 'DESC' }
                 })
@@ -144,12 +146,12 @@ class Skill_Tools implements INode {
 
                 const appDataSource = options.appDataSource as DataSource
                 const databaseEntities = options.databaseEntities as IDatabaseEntity
-                if (!appDataSource || !databaseEntities?.['SkillV2']) {
+                if (!appDataSource || !databaseEntities?.['Skill']) {
                     return []
                 }
 
                 const searchOptions = options.searchOptions || {}
-                const row = await appDataSource.getRepository(databaseEntities['SkillV2']).findOne({
+                const row = await appDataSource.getRepository(databaseEntities['Skill']).findOne({
                     where: { ...searchOptions, id: skillId }
                 })
                 if (!row) return placeholder
@@ -167,12 +169,36 @@ class Skill_Tools implements INode {
                     ]
                 }
 
+                // Best-effort: pull the published bundle so we can surface
+                // each file's YAML frontmatter (`name`, `description`) in the
+                // dropdown. When no bundle is published yet — or the lookup
+                // fails for any reason — we silently fall back to the
+                // filename + path labels used historically.
+                let bundleEntries: Record<string, SkillBundleEntry> | null = null
+                const publishedBundleId = (row as any).publishedBundleId as string | undefined
+                if (publishedBundleId) {
+                    try {
+                        const bundle = await loadPublishedBundle((row as any).workspaceId, (row as any).id, publishedBundleId)
+                        bundleEntries = bundle.entries || null
+                    } catch (error) {
+                        console.warn(`Failed to load published bundle for skill ${skillId}: ${(error as Error).message}`)
+                        bundleEntries = null
+                    }
+                }
+
                 return markdownFiles
-                    .map((node) => ({
-                        label: node.name,
-                        name: node.id,
-                        description: computeNodePath(node.id, tree) || node.name
-                    }))
+                    .map((node) => {
+                        const fallbackLabel = node.name
+                        const fallbackDescription = computeNodePath(node.id, tree) || node.name
+                        const entry = bundleEntries?.[node.id]
+                        const frontmatter = entry?.content ? extractFrontmatterMetadata(entry.content) : null
+                        const label = formatToolName(frontmatter?.name || fallbackLabel)
+                        return {
+                            label,
+                            name: node.id,
+                            description: frontmatter?.description || fallbackDescription
+                        }
+                    })
                     .sort((a, b) => a.label.localeCompare(b.label))
             } catch {
                 return placeholder
@@ -188,12 +214,12 @@ class Skill_Tools implements INode {
 
         const appDataSource = options.appDataSource as DataSource
         const databaseEntities = options.databaseEntities as IDatabaseEntity
-        if (!appDataSource || !databaseEntities?.['SkillV2']) {
+        if (!appDataSource || !databaseEntities?.['Skill']) {
             throw new Error('Database not available')
         }
 
         const searchOptions = options.searchOptions || {}
-        const row: any = await appDataSource.getRepository(databaseEntities['SkillV2']).findOne({
+        const row: any = await appDataSource.getRepository(databaseEntities['Skill']).findOne({
             where: { ...searchOptions, id: skillId }
         })
         if (!row) {
@@ -261,14 +287,40 @@ class Skill_Tools implements INode {
                 recipeLines
             })
 
+            const frontmatter = entry?.content ? extractFrontmatterMetadata(entry.content) : null
+            const name = formatToolName(frontmatter?.name || entry.name)
+
             const tool = new SkillFileTool({
-                name: formatToolName(entry.name),
+                name,
                 description: buildToolDescription(entry),
                 content: entry.content,
                 toolHint: hint,
                 nodeId: entry.nodeId
             })
             tools.push(tool)
+        }
+
+        // ------------------------------------------------------------------
+        // Custom tools referenced by the selected skill files. The compiled
+        // bundle records each `{{tool.<provider>.<toolName>.<uuid>}}`
+        // placeholder as a `ToolReference`; here we resolve every enabled
+        // `type: 'custom'` reference back to the live `Tool` DB row and
+        // expose it as a `DynamicStructuredTool`, exactly like the standalone
+        // `CustomTool` node would. Other reference types (mcp / http /
+        // builtin) are still only surfaced through the textual hint.
+        // ------------------------------------------------------------------
+        const customTools = await buildCustomToolsFromBundle({
+            bundle,
+            selectedIds,
+            appDataSource,
+            databaseEntities,
+            nodeData,
+            options
+        })
+        for (const t of customTools) {
+            // DynamicStructuredTool extends StructuredTool which shares the
+            // BaseTool interface with Tool — safe to widen for the agent.
+            tools.push(t as unknown as Tool)
         }
 
         // ------------------------------------------------------------------

@@ -1,3 +1,8 @@
+---
+name: interview_question_generator
+description: Generate a tailored interview plan based on a candidate's screening report, including behavioral and technical questions with follow-up probes.
+---
+
 # Interview Question Generator
 
 You are an expert interviewer. Given a screening report for a candidate,
@@ -9,8 +14,6 @@ and pressure-tests the identified gaps.
 **Screening report (from the resume-screener skill):**
 {{skill.<<NODE_ID_OF_resume-screener.md>>}}
 
-**Structured-output / code tool (optional):**
-{{tool.sandbox.python.<<UUID_FOR_python_runner>>}}
 
 ## Instructions
 
@@ -49,23 +52,5 @@ labelled `json`):
             "followup": "…"
         }
     ]
-}
-```
-
-If you have access to the python tool above, use it to validate the
-JSON structure before returning it. Otherwise double-check by hand.
-
-## Metadata
-
-```json
-{
-    "tools": {
-        "<<UUID_FOR_python_runner>>": {
-            "type": "builtin",
-            "provider": "sandbox",
-            "toolName": "python",
-            "enabled": true
-        }
-    }
 }
 ```

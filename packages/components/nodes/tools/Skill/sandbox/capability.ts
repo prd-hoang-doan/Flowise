@@ -1,9 +1,9 @@
 /**
- * Skill V2 — sandbox capability detection.
+ * Skill — sandbox capability detection.
  *
  * Two execution modes for a published Skill:
  *
- *   1. **Sandbox shell** — when `E2B_APIKEY` is set and `SKILL_V2_ALLOW_EXEC`
+ *   1. **Sandbox shell** — when `E2B_APIKEY` is set and `SKILL_ALLOW_EXEC`
  *      is truthy (both default on), the Skill node registers a single
  *      `bash_<SkillName>` tool backed by an E2B VM. The LLM issues free-form
  *      shell commands against materialised skill files.
@@ -46,20 +46,20 @@ const parseIntEnv = (v: string | undefined, fallback: number): number => {
  * (read-only) mode.
  *
  * Opt-outs:
- *   - `SKILL_V2_ALLOW_EXEC=false` — hard kill switch; always `null`.
+ *   - `SKILL_ALLOW_EXEC=false` — hard kill switch; always `null`.
  *   - No `E2B_APIKEY` — no shell backend, always `null`.
- *   - `SKILL_V2_BASH_EXEC=false` — author explicitly disables the shell;
+ *   - `SKILL_BASH_EXEC=false` — author explicitly disables the shell;
  *     equivalent to falling back to read-only mode.
  */
 export const detectSandboxCapability = (env: NodeJS.ProcessEnv = process.env): SandboxCapability | null => {
-    if (!parseBool(env.SKILL_V2_ALLOW_EXEC, true)) return null
+    if (!parseBool(env.SKILL_ALLOW_EXEC, true)) return null
     if (!env.E2B_APIKEY) return null
-    if (!parseBool(env.SKILL_V2_BASH_EXEC, true)) return null
+    if (!parseBool(env.SKILL_BASH_EXEC, true)) return null
 
     return {
         label: 'E2B (Bash session)',
-        maxTimeoutMs: parseIntEnv(env.SKILL_V2_EXEC_TIMEOUT_MS, 15000),
-        maxOutputBytes: parseIntEnv(env.SKILL_V2_MAX_OUTPUT_BYTES, 64 * 1024)
+        maxTimeoutMs: parseIntEnv(env.SKILL_EXEC_TIMEOUT_MS, 15000),
+        maxOutputBytes: parseIntEnv(env.SKILL_MAX_OUTPUT_BYTES, 64 * 1024)
     }
 }
 

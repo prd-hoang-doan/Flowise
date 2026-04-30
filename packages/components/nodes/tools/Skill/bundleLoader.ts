@@ -1,4 +1,4 @@
-import { getFileFromStorage } from '../../../src/storageUtils'
+import { readBlobFromStorage } from '../../../src/storageUtils'
 import { SkillBundle } from './utils'
 
 /**
@@ -15,6 +15,7 @@ interface CacheEntry {
 
 const TTL_MS = 24 * 60 * 60 * 1000
 const MAX_ENTRIES = 64
+const SKILLS_ROOT = 'skills'
 
 const memoryCache = new Map<string, CacheEntry>()
 
@@ -30,7 +31,7 @@ const evictIfNeeded = (): void => {
 
 /**
  * Load a published `SkillBundle` by its deterministic id. Reads the JSON
- * artifact written by `SkillV2Storage.putBundle` on publish.
+ * artifact written by `SkillStorage.putBundle` on publish.
  *
  * Throws when the bundle file is missing so callers can surface a clear
  * "republish the skill" error.
@@ -45,11 +46,13 @@ export const loadPublishedBundle = async (workspaceId: string, skillId: string, 
     }
     if (cached) memoryCache.delete(key)
 
-    let buf: Buffer
-    try {
-        buf = await getFileFromStorage('bundle.json', 'skills-v2', workspaceId, skillId, 'artifacts', bundleId)
-    } catch (err) {
-        throw new Error(`Published bundle not found in storage — republish the skill (${(err as Error).message})`)
+    // `readBlobFromStorage` returns `null` only on a real not-found and
+    // re-throws every other error (network/IAM/throttling). Distinguishing
+    // these lets us surface a clean "republish" message for missing bundles
+    // and propagate transient cloud failures verbatim.
+    const buf = await readBlobFromStorage(SKILLS_ROOT, workspaceId, skillId, 'artifacts', bundleId, 'bundle.json')
+    if (!buf) {
+        throw new Error(`Published bundle not found in storage — republish the skill`)
     }
 
     let parsed: SkillBundle

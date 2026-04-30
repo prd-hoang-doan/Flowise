@@ -3,8 +3,8 @@
  *
  * These are deliberately copied locally instead of imported from the server
  * package to keep `packages/components` independent of `packages/server`.
- * The shapes mirror `packages/server/src/services/skills-v2/entities.ts` and
- * `packages/server/src/services/skills-v2/utils/tree.ts`.
+ * The shapes mirror `packages/server/src/services/skills/entities.ts` and
+ * `packages/server/src/services/skills/utils/tree.ts`.
  */
 
 // ---------------------------------------------------------------------------
@@ -38,15 +38,32 @@ export interface ToolDependency {
     toolName: string
 }
 
+/**
+ * Mirror of `ToolReference` in
+ * `packages/server/src/services/skills/entities.ts`. Carried verbatim
+ * inside `SkillBundleEntry.tools.references` and used by the runtime
+ * to materialise live LangChain tools (e.g. via the Custom Tool DB row
+ * keyed by `uuid`).
+ */
+export interface ToolReference {
+    type: string
+    provider: string
+    toolName: string
+    uuid: string
+    credentialId?: string
+    enabled?: boolean
+    config?: Record<string, unknown>
+}
+
 export interface SkillBundleEntry {
     nodeId: string
     kind: SkillKind
     name: string
     path: string
     content: string
-    tools: { dependencies: ToolDependency[]; references: unknown[] }
+    tools: { dependencies: ToolDependency[]; references: ToolReference[] }
     files: { references: unknown[] }
-    // Optional: carried by bundles produced by SkillV2Compiler. Used by the
+    // Optional: carried by bundles produced by SkillCompiler. Used by the
     // exec strategy to key its source cache on the published digest so a
     // re-publish invalidates cached sources automatically.
     source?: { nodeId: string; contentDigest: string }
@@ -77,7 +94,7 @@ export const classifyKindForTreeNode = (extension: string): SkillKind => {
     return 'binary'
 }
 
-/** Parse the JSON blob stored in `SkillV2.fileTree`. */
+/** Parse the JSON blob stored in `Skill.fileTree`. */
 export const parseFileTree = (json: string | null | undefined): SkillFileTree => {
     if (!json) return { nodes: [] }
     try {
@@ -122,10 +139,15 @@ export const formatToolName = (name: string): string => (name || 'skill').trim()
  *   2. "Sandbox shell is available…" — one-liner that names the bash
  *      tool and points at the skills / output roots. Only emitted when
  *      `options.bashMode` is supplied.
- *   3. "Execution helpers" — one recipe line per referenced file (e.g.
- *      `./scoring-algorithm.js → node /home/user/skills/...`). Pre-rendered
- *      by the caller so `utils.ts` stays free of sandbox imports; the
- *      concrete renderer lives in `sandbox/commandRecipes.ts#renderReferenceRecipes`.
+ *   3. "Execution helpers" — one block per referenced file. Exec
+ *      references emit a single line (e.g. `./scoring-algorithm.js →
+ *      node /home/user/skills/...`); data and binary references emit up
+ *      to three lines (primary + 1–2 productive alternatives such as
+ *      `grep`, `jq`, `pdfgrep`, `head`) so the LLM sees the productive
+ *      moves right next to the prose that referenced the file.
+ *      Pre-rendered by the caller so `utils.ts` stays free of sandbox
+ *      imports; the concrete renderer lives in
+ *      `sandbox/commandRecipes.ts#renderReferenceRecipes`.
  *
  * In fallback / read-only mode (no bash tool), the hint reduces back to
  * the tool-dependency line and nothing about execution is promised.
@@ -173,19 +195,65 @@ export const buildToolHint = (
     return segments.join('\n\n')
 }
 
-/** Extract the first `# Heading` from a markdown body (≤ 300 chars). */
-export const extractFirstHeading = (markdown: string): string | null => {
-    if (!markdown) return null
-    const m = /^#\s+(.+)$/m.exec(markdown)
-    if (!m) return null
-    const heading = m[1].trim()
-    if (!heading) return null
-    return heading.length > 300 ? `${heading.slice(0, 297)}...` : heading
+/**
+ * Extract the YAML-frontmatter metadata block from a markdown body.
+ *
+ * Skill markdown files follow the convention:
+ *
+ *   ---
+ *   name: interview_question_generator
+ *   description: Generate a tailored interview plan…
+ *   ---
+ *   # Interview Question Generator
+ *   …
+ *
+ * We only need a handful of scalar keys (`name`, `description`) so we
+ * deliberately avoid pulling in a full YAML dependency. Quoted strings
+ * and folded multi-line values via leading-indent continuation are
+ * supported, which is everything the UI surfaces today. Returns `null`
+ * when no frontmatter block is present so callers can fall back to
+ * filename-derived labels.
+ */
+export interface SkillFrontmatter {
+    name?: string
+    description?: string
+}
+
+export const extractFrontmatterMetadata = (markdown: string): SkillFrontmatter | null => {
+    if (typeof markdown !== 'string' || !markdown.length) return null
+    const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/)
+    if (!match) return null
+
+    const out: Record<string, string> = {}
+    let currentKey: string | null = null
+
+    for (const line of match[1].split(/\r?\n/)) {
+        if (!line.trim()) continue
+        if (currentKey && /^\s+\S/.test(line)) {
+            out[currentKey] = out[currentKey] ? `${out[currentKey]} ${line.trim()}` : line.trim()
+            continue
+        }
+        const kv = line.match(/^([A-Za-z_][\w-]*)\s*:\s*(.*)$/)
+        if (!kv) continue
+        currentKey = kv[1]
+        let value = kv[2].trim()
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1)
+        }
+        out[currentKey] = value
+    }
+
+    if (!Object.keys(out).length) return null
+    return {
+        name: out.name || undefined,
+        description: out.description || undefined
+    }
 }
 
 /** Compose the tool description shown to the LLM. */
 export const buildToolDescription = (entry: SkillBundleEntry): string => {
-    const base = extractFirstHeading(entry.content) || `Skill: ${entry.name}`
+    const frontmatter = entry.content ? extractFrontmatterMetadata(entry.content) : null
+    const base = frontmatter?.description || 'No description provided.'
     const deps = entry.tools?.dependencies ?? []
     if (!deps.length) return base
     const seen = new Set<string>()

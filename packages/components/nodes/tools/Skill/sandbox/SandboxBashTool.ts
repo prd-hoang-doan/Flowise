@@ -1,5 +1,5 @@
 /**
- * Skill V2 — LLM-facing bash tool.
+ * Skill — LLM-facing bash tool.
  *
  * A single `StructuredTool` that takes one shell command and runs it
  * inside the shared [`SandboxSession`](./SandboxSession.ts). The tool
@@ -21,7 +21,7 @@
 
 import { StructuredTool, ToolParams } from '@langchain/core/tools'
 import { z } from 'zod/v3'
-import { formatRecipeCommand, groupByRecipeFamily } from './commandRecipes'
+import { FamilyDef, formatTaskCommand, groupByRecipeFamily, RecipeTask, renderHelperCatalog } from './commandRecipes'
 import { absolutePath, SandboxManifest } from './SandboxManifest'
 import { SandboxSession } from './SandboxSession'
 
@@ -150,13 +150,22 @@ const firstLine = (s: string): string => {
 /**
  * Compose the description the LLM sees for the bash tool.
  *
- * We inline a "Suggested invocations" cheat-sheet grouped by file type
- * so the model doesn't have to guess whether `./foo.py` wants `python3`
- * or `./bar.js` wants `node`. Groups are capped at `MAX_ENTRIES_PER_GROUP`
- * to keep the description under ~2 KB; the LLM can still discover the
- * rest with `ls` / `find` inside the sandbox.
+ * The description is assembled in four sections so the model can:
+ *   1. Understand the contract (`intro`).
+ *   2. Reach for productive commands first (`productivity`).
+ *   3. See the canonical primary command for every reachable file
+ *      (`per-file primary`).
+ *   4. Discover per-family alternatives like `grep -nE`, `jq`, `pdfgrep`,
+ *      `head -n N` — taught once per family rather than per file
+ *      (`per-family productive`).
+ *
+ * Per-file groups are capped at `MAX_ENTRIES_PER_GROUP`; productive
+ * blocks are capped at `MAX_PRODUCTIVE_PER_FAMILY`. Together they keep
+ * the description well under ~3 KB even with a manifest that touches
+ * every family.
  */
 const MAX_ENTRIES_PER_GROUP = 8
+const MAX_PRODUCTIVE_PER_FAMILY = 4
 
 export const buildBashToolDescription = (manifest: SandboxManifest, engineLabel: string): string => {
     const intro =
@@ -170,22 +179,94 @@ export const buildBashToolDescription = (manifest: SandboxManifest, engineLabel:
         return `${intro}\n\nNo skill files were reachable — the sandbox is empty beyond the default image.`
     }
 
-    const groups = groupByRecipeFamily(manifest.entries)
-    const sections: string[] = ['\n\nSuggested invocations (one command per file, use these as starting points):']
-    for (const { recipe, entries } of groups) {
+    const helpersAvailable = manifest.helpers.length > 0
+    const groups = groupByRecipeFamily(manifest.entries, { helpersAvailable })
+
+    // Section 2 — productivity tips. Always rendered (cheap to keep).
+    const productivity: string[] = [
+        '',
+        '',
+        'Productivity rules — DO NOT default to `cat` for data files:',
+        '- Always peek first: the per-file commands below are deliberately `head`/`tail` probes, not full reads. Run those before anything else.',
+        "- To find specific content, use `grep -nE '<pattern>' <path>` (or `pdfgrep` for PDFs, `jq` for JSON, `yq` for YAML, `xmllint --xpath` for XML) — never re-read the whole file.",
+        '- Need the entire file? Confirm size first with `wc -c <path>` and only then escalate to the explicit `cat <path>` alternative listed under "Productive commands per family" below.',
+        '- For markdown skill files, you usually already have the content from the per-skill tool response — re-reading them with `cat` is wasted tokens.',
+        '- Pipe noisy outputs through `head -n 200` or write to ' +
+            manifest.outputDir +
+            '/ and re-read selectively to stay under the stdout clamp.'
+    ]
+
+    // Section 3 — per-file starter commands. Headline emphasises that
+    // these are productive defaults (peek/probe/list), NOT authoritative
+    // full-reads — escalate via the per-family block when peeks aren't
+    // enough.
+    const perFile: string[] = [
+        '',
+        '',
+        'Starter commands per file (productive peeks/probes — escalate via "Productive commands per family" below for full reads, search, or query):'
+    ]
+    for (const { def, entries } of groups) {
         const shown = entries.slice(0, MAX_ENTRIES_PER_GROUP)
         const omitted = entries.length - shown.length
-        sections.push(`- ${recipe.label}:`)
+        perFile.push(`- ${def.label}:`)
         for (const entry of shown) {
-            const cmd = formatRecipeCommand(recipe, absolutePath(manifest, entry))
-            sections.push(`    • ${entry.relPath} → ${cmd}`)
+            const cmd = formatTaskCommand(def.primary, absolutePath(manifest, entry), undefined, manifest.helpersDir)
+            perFile.push(`    • ${entry.relPath} → ${cmd}`)
         }
         if (omitted > 0) {
-            sections.push(`    • …and ${omitted} more; run \`ls ${manifest.skillsDir}\` to list them.`)
+            perFile.push(`    • …and ${omitted} more; run \`ls ${manifest.skillsDir}\` to list them.`)
         }
     }
 
-    const description = intro + sections.join('\n')
+    // Section 4 — built-in helpers (only when materialised in the VM).
+    // Surfaced before the per-family productive block so the LLM sees
+    // the canonical helper invocation before the fallback alternatives.
+    const helperLines = renderHelperCatalog(manifest)
+    const helperSection: string[] = []
+    if (helperLines.length) {
+        helperSection.push('', '', `Built-in helpers (always available under ${manifest.helpersDir}):`, ...helperLines)
+    }
+
+    // Section 5 — per-family productive commands. Skip families with no
+    // alternatives (the four exec-* families): the primary command IS
+    // the productive move.
+    const productiveFamilies = groups.filter(({ def }) => def.alternatives.length > 0)
+    const perFamily: string[] = []
+    if (productiveFamilies.length) {
+        perFamily.push('', '', 'Productive commands per family (template-only — substitute <pattern> / <query> / <inner-path>):')
+        for (const { def } of productiveFamilies) {
+            perFamily.push(`- ${def.label}:`)
+            const tasks = pickFamilyProductive(def, MAX_PRODUCTIVE_PER_FAMILY)
+            for (const task of tasks) {
+                perFamily.push(
+                    `    • ${task.template
+                        .replace('{path}', '<path>')
+                        .replace('{args}', '')
+                        .replace('{helpers_dir}', manifest.helpersDir)} — ${task.description}`
+                )
+            }
+        }
+    }
+
+    const description = intro + productivity.join('\n') + perFile.join('\n') + helperSection.join('\n') + perFamily.join('\n')
     console.log('[buildBashToolDescription] Generated bash tool description:\n' + description)
     return description
+}
+
+/**
+ * Collapse the family's `alternatives` (and bubble the primary up when
+ * there is no useful alternative ordering, e.g. `cat` is already the
+ * recommended baseline) into a deduplicated list of up to `n` tasks.
+ */
+const pickFamilyProductive = (def: FamilyDef, n: number): RecipeTask[] => {
+    if (n <= 0) return []
+    const seen = new Set<string>()
+    const out: RecipeTask[] = []
+    for (const task of def.alternatives) {
+        if (seen.has(task.template)) continue
+        seen.add(task.template)
+        out.push(task)
+        if (out.length >= n) break
+    }
+    return out
 }

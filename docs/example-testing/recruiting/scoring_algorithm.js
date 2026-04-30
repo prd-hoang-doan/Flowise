@@ -1,7 +1,7 @@
 /**
  * Candidate scoring algorithm used by the recruiting Skill.
  *
- * Invocation contract (Flowise Skill V2 sandbox — NodeVM or E2B):
+ * Invocation contract (Flowise Skill sandbox — NodeVM or E2B):
  *
  *     exec_skill_code_<Skill>({
  *       path: "skills/scoring_algorithm.js",

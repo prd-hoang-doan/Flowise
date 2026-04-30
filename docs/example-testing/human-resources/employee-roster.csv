@@ -1,0 +1,17 @@
+employee_id,name,role,level,location,base_salary_usd,hire_date,last_rating,manager_id
+E1001,Alex Park,Software Engineer,L4,SF,168000,2021-03-15,Exceeds,E2001
+E1002,Priya Shah,Software Engineer,L4,SF,162000,2021-08-22,Meets,E2001
+E1003,Marcus Reyes,Software Engineer,L4,SF,158000,2022-01-10,Meets,E2001
+E1004,Jordan Lee,Senior Software Engineer,L5,SF,205000,2019-06-01,Outstanding,E2001
+E1005,Sam Chen,Senior Software Engineer,L5,SF,198000,2020-02-18,Exceeds,E2001
+E1006,Yuki Tanaka,Software Engineer,L4,Seattle,151000,2022-05-09,Exceeds,E2002
+E1007,Diana Okafor,Senior Software Engineer,L5,Seattle,189000,2018-11-04,Outstanding,E2002
+E1008,Rafael Costa,Staff Software Engineer,L6,SF,250000,2017-04-12,Outstanding,E3001
+E1009,Hana Ito,Engineering Manager,L5M,SF,220000,2020-09-15,Exceeds,E3001
+E1010,Maya Patel,Software Engineer,L4,Austin,138000,2023-02-20,Meets,E2003
+E1011,Noah Bergstrom,Software Engineer,L4,Austin,142000,2022-09-12,Exceeds,E2003
+E1012,Aisha Khan,Senior Software Engineer,L5,Austin,178000,2020-04-30,Meets,E2003
+E2001,Kim Holloway,Engineering Manager,L5M,SF,225000,2018-04-01,Exceeds,E3001
+E2002,Ben Lawson,Engineering Manager,L5M,Seattle,210000,2019-08-14,Meets,E3001
+E2003,Sofia Vargas,Engineering Manager,L5M,Austin,189000,2020-11-22,Exceeds,E3001
+E3001,Olivia Brennan,Director of Engineering,L7,SF,310000,2016-07-19,Outstanding,EXEC1

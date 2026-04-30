@@ -1,5 +1,5 @@
 /**
- * Skill V2 — raw-bytes loader for sandbox materialization.
+ * Skill — raw-bytes loader for sandbox materialization.
  *
  * Companion to [`fetchNodeSource`](../fetchNodeSource.ts). Where that
  * module deals exclusively with text source of *code* nodes, this one
@@ -18,7 +18,7 @@
  */
 
 import { SkillKind } from '../utils'
-import { getFileFromStorage } from '../../../../src/storageUtils'
+import { readBlobFromStorage } from '../../../../src/storageUtils'
 
 interface CacheEntry {
     bytes: Buffer
@@ -28,6 +28,7 @@ interface CacheEntry {
 const TTL_MS = 60 * 60 * 1000
 const MAX_ENTRIES = 256
 const memoryCache = new Map<string, CacheEntry>()
+const SKILLS_ROOT = 'skills'
 
 const cacheKey = (workspaceId: string, skillId: string, nodeId: string, digest: string): string =>
     `${workspaceId}:${skillId}:${nodeId}:${digest}`
@@ -101,12 +102,11 @@ export const fetchNodeBytes = async (input: FetchNodeBytesInput): Promise<Buffer
 // ---------------------------------------------------------------------------
 
 const readJsonNode = async (workspaceId: string, skillId: string, nodeId: string): Promise<Buffer | null> => {
-    let buf: Buffer
-    try {
-        buf = await getFileFromStorage(`${nodeId}.json`, 'skills-v2', workspaceId, skillId, 'nodes')
-    } catch {
-        return null
-    }
+    // `readBlobFromStorage` returns `null` on a real not-found and throws on
+    // every other error. We let real errors propagate so callers see them
+    // instead of misclassifying a transient cloud outage as "source missing".
+    const buf = await readBlobFromStorage(SKILLS_ROOT, workspaceId, skillId, 'nodes', `${nodeId}.json`)
+    if (!buf) return null
     try {
         const payload = JSON.parse(buf.toString('utf8')) as { content?: unknown }
         if (payload && typeof payload.content === 'string') {
@@ -119,11 +119,7 @@ const readJsonNode = async (workspaceId: string, skillId: string, nodeId: string
 }
 
 const readBinaryNode = async (workspaceId: string, skillId: string, nodeId: string): Promise<Buffer | null> => {
-    try {
-        return await getFileFromStorage(`${nodeId}.bin`, 'skills-v2', workspaceId, skillId, 'nodes')
-    } catch {
-        return null
-    }
+    return readBlobFromStorage(SKILLS_ROOT, workspaceId, skillId, 'nodes', `${nodeId}.bin`)
 }
 
 /** Used by tests; safe to ignore in production. */

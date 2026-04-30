@@ -1,10 +1,9 @@
 /**
- * Skill V2 — E2B bash session.
+ * Skill — E2B bash session.
  *
  * A `SandboxSession` owns one E2B VM for the lifetime of one agent run.
  * It is the bridge between the manifest (what-should-be-on-disk) and
  * the `SandboxBashTool` (how-the-LLM-reaches-it). The design mirrors
- * Dify's `SandboxBashSession` in [SANDBOX_INTEGRATION.md](../../../../../../docs/skill-v2/SANDBOX_INTEGRATION.md):
  *
  *   1. `ensureStarted()` is idempotent and lazy — nothing hits the wire
  *      until the LLM actually calls the bash tool.
@@ -26,9 +25,10 @@
 
 import { Sandbox } from '@e2b/code-interpreter'
 import type { SkillBundle } from '../utils'
+import { BUILTIN_HELPERS, BuiltinHelper } from './builtinHelpers'
 import { clampOutput, SandboxCapability } from './capability'
 import { fetchNodeBytes } from './fetchNodeBytes'
-import { absolutePath, SandboxManifest, SandboxManifestEntry } from './SandboxManifest'
+import { absolutePath, joinPosix, SandboxManifest, SandboxManifestEntry } from './SandboxManifest'
 
 // ---------------------------------------------------------------------------
 // Env-driven limits
@@ -81,6 +81,13 @@ export interface SandboxSessionOptions {
     capability: SandboxCapability
     /** Override for tests; production always uses `@e2b/code-interpreter`. */
     createSandbox?: (opts: { apiKey: string | undefined; timeoutMs: number }) => Promise<Sandbox>
+    /**
+     * Optional override for the built-in helper registry. Production
+     * always uses `BUILTIN_HELPERS`. Tests inject a stub registry so
+     * helper materialisation can be exercised without touching the
+     * real Python scripts.
+     */
+    helperRegistry?: readonly BuiltinHelper[]
 }
 
 type LifecycleState = 'idle' | 'starting' | 'ready' | 'closed'
@@ -98,6 +105,7 @@ export class SandboxSession {
 
     private readonly bundle: SkillBundle
     private readonly createSandbox: NonNullable<SandboxSessionOptions['createSandbox']>
+    private readonly helperRegistry: readonly BuiltinHelper[]
 
     private state: LifecycleState = 'idle'
     private sandbox: Sandbox | null = null
@@ -112,6 +120,7 @@ export class SandboxSession {
         this.manifest = options.manifest
         this.capability = options.capability
         this.createSandbox = options.createSandbox ?? (async ({ apiKey, timeoutMs }) => Sandbox.create({ apiKey, timeoutMs }))
+        this.helperRegistry = options.helperRegistry ?? BUILTIN_HELPERS
     }
 
     get isClosed(): boolean {
@@ -268,6 +277,13 @@ export class SandboxSession {
     // Internals
     // -----------------------------------------------------------------------
 
+    /**
+     * Boot the sandbox and materialize all manifest entries.
+     * Clone the manifest files into the VM's filesystem so the bash tool can
+     * reach them without extra storage round-trips. The manifest is the
+     * single source of truth for what should be on disk, so we don't allow
+     * the session to start until all files are in place.
+     */
     private async bootAndMaterialize(): Promise<void> {
         let sbx: Sandbox | null = null
         try {
@@ -278,18 +294,29 @@ export class SandboxSession {
             this.sandbox = sbx
             await sbx.files.makeDir(this.manifest.skillsDir)
             await sbx.files.makeDir(this.manifest.outputDir)
+            if (this.manifest.helpers.length) {
+                await sbx.files.makeDir(this.manifest.helpersDir)
+            }
             await this.materializeManifest(sbx)
+            await this.materializeHelpers(sbx)
             this.state = 'ready'
             this.bumpIdleTimer()
         } catch (err) {
+            console.error(
+                `Failed to boot sandbox for skill ${this.skillId}:`,
+                err instanceof Error ? err.stack || err.message : String(err)
+            )
             // Roll back to a clean state so the next ensureStarted() call
             // can retry (e.g. transient network blip during boot).
             this.state = 'idle'
             if (sbx) {
                 try {
                     await sbx.kill()
-                } catch {
-                    // noop
+                } catch (err) {
+                    console.error(
+                        `Failed to kill sandbox for skill ${this.skillId}:`,
+                        err instanceof Error ? err.stack || err.message : String(err)
+                    )
                 }
             }
             this.sandbox = null
@@ -331,6 +358,51 @@ export class SandboxSession {
         // the SDK's declared element type is `string | ArrayBuffer | Blob |
         // ReadableStream` and Buffer isn't listed by name.
         await sbx.files.write(writeEntries as unknown as { path: string; data: ArrayBuffer }[])
+    }
+
+    /**
+     * Upload the built-in helper scripts under `manifest.helpersDir`.
+     *
+     * Helpers are first-party trusted code — they are deliberately
+     * exempt from the per-file / per-session upload budgets that protect
+     * against malicious skill assets. We instead surface a single
+     * telemetry log line (`Materialized N helpers (B bytes) for skill X`)
+     * so accidental size growth is visible without bisecting commits.
+     *
+     * The helper entries on the manifest are enriched in place with the
+     * resolved `digest` and `sizeBytes` so downstream callers (cache
+     * keys, drift detection) can read the same numbers the session
+     * actually uploaded.
+     */
+    private async materializeHelpers(sbx: Sandbox): Promise<void> {
+        if (!this.manifest.helpers.length) return
+
+        const writeEntries: Array<{ path: string; data: Buffer }> = []
+        let totalBytes = 0
+
+        for (const helperMeta of this.manifest.helpers) {
+            const registered = this.helperRegistry.find((h) => h.name === helperMeta.name)
+            if (!registered) {
+                console.warn(`Manifest references unknown built-in helper "${helperMeta.name}" — skipping.`)
+                continue
+            }
+            const bytes = await registered.bytes()
+            const digest = await registered.digest()
+            // Enrich the manifest in place so callers (cache keys, drift
+            // detection) can read the same numbers we actually uploaded.
+            helperMeta.digest = digest
+            helperMeta.sizeBytes = bytes.length
+            totalBytes += bytes.length
+            writeEntries.push({
+                path: joinPosix(this.manifest.helpersDir, helperMeta.relPath),
+                data: bytes
+            })
+        }
+
+        if (!writeEntries.length) return
+
+        await sbx.files.write(writeEntries as unknown as { path: string; data: ArrayBuffer }[])
+        console.log(`[SandboxSession] Materialized ${writeEntries.length} helpers (${totalBytes} bytes) for skill ${this.skillId}`)
     }
 
     private async loadEntryBytes(entry: SandboxManifestEntry): Promise<Buffer | null> {

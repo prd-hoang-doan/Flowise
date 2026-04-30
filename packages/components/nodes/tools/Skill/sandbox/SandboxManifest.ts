@@ -1,5 +1,5 @@
 /**
- * Skill V2 — Sandbox Manifest.
+ * Skill — Sandbox Manifest.
  *
  * A `SandboxManifest` describes what the E2B VM's filesystem should look
  * like for one agent run. It is a pure, deterministic projection of a
@@ -20,6 +20,7 @@
  * the bytes for code / data / binary nodes is the `SandboxSession`'s job.
  */
 
+import { BUILTIN_HELPERS, BuiltinHelper, builtinHelpersEnabled } from './builtinHelpers'
 import { SkillBundle, SkillBundleEntry, SkillKind } from '../utils'
 
 // ---------------------------------------------------------------------------
@@ -31,6 +32,8 @@ import { SkillBundle, SkillBundleEntry, SkillKind } from '../utils'
 export const DEFAULT_SKILLS_DIR = '/home/user/skills'
 /** Root inside the VM where the LLM is expected to write artefacts. */
 export const DEFAULT_OUTPUT_DIR = '/home/user/output'
+/** Root inside the VM where the runtime materialises built-in helpers. */
+export const DEFAULT_HELPERS_DIR = '/home/user/helpers'
 
 // ---------------------------------------------------------------------------
 // Shapes
@@ -57,13 +60,48 @@ export interface SandboxManifestEntry {
     digest?: string
 }
 
+/**
+ * One built-in helper script the runtime materialises into the sandbox
+ * before the LLM gets its first turn. Carries enough metadata for
+ * `SandboxSession` to upload the bytes and for downstream callers (the
+ * bash tool description, recipe selection) to render references.
+ *
+ * Distinct from `SandboxManifestEntry` because helpers:
+ *   - are first-party trusted code, exempt from the per-file / per-session
+ *     upload budgets that protect against malicious skill assets;
+ *   - live under their own `helpersDir`, never under `skillsDir`, so
+ *     name collisions with author files are impossible;
+ *   - are not part of the bundle's `dependencyGraph`.
+ */
+export interface SandboxHelperEntry {
+    name: string
+    /** Path relative to the helpers directory (e.g. `pdf_extract.py`). */
+    relPath: string
+    /** sha256 of the script bytes; useful for cache keys + drift detection. */
+    digest: string
+    /** Decoded byte length — surfaced through telemetry. */
+    sizeBytes: number
+}
+
 export interface SandboxManifest {
     /** Absolute VM path for the skills root. */
     skillsDir: string
     /** Absolute VM path where LLM-produced files are harvested from. */
     outputDir: string
+    /**
+     * Absolute VM path where built-in helpers live. Always set so that
+     * downstream code can render helper command templates uniformly,
+     * even when no helpers are materialised in the current session.
+     */
+    helpersDir: string
     /** Ordered list of materializable entries (skill + code + data + binary). */
     entries: SandboxManifestEntry[]
+    /**
+     * Built-in helpers materialised under `helpersDir`. Empty when the
+     * `SKILL_BUILTIN_HELPERS` env switch is off, when `includeHelpers`
+     * is explicitly disabled, or when the registry is empty.
+     */
+    helpers: SandboxHelperEntry[]
 }
 
 // ---------------------------------------------------------------------------
@@ -119,11 +157,25 @@ export const computeReachable = (roots: string[], bundle: SkillBundle): Set<stri
 export interface BuildManifestOptions {
     skillsDir?: string
     outputDir?: string
+    helpersDir?: string
     /**
      * When present, filter entries to only the listed kinds. Defaults to
      * all four kinds so the sandbox sees the same view the author authored.
      */
     kinds?: SkillKind[]
+    /**
+     * Whether to project the built-in helper registry into the manifest's
+     * `helpers` field. Defaults to `builtinHelpersEnabled(process.env)` so
+     * the global `SKILL_BUILTIN_HELPERS` switch governs production runs.
+     * Tests pass an explicit boolean to keep the projection deterministic.
+     */
+    includeHelpers?: boolean
+    /**
+     * Optional override for the helper registry — used by tests to inject
+     * a stub set without going through the global registry. Production
+     * always uses `BUILTIN_HELPERS` from `./builtinHelpers`.
+     */
+    helperRegistry?: readonly BuiltinHelper[]
 }
 
 /**
@@ -143,10 +195,30 @@ export interface BuildManifestOptions {
 export const buildManifest = (bundle: SkillBundle, selectedIds: string[], options?: BuildManifestOptions): SandboxManifest => {
     const skillsDir = options?.skillsDir ?? DEFAULT_SKILLS_DIR
     const outputDir = options?.outputDir ?? DEFAULT_OUTPUT_DIR
+    const helpersDir = options?.helpersDir ?? DEFAULT_HELPERS_DIR
     const allowedKinds = new Set<SkillKind>(options?.kinds ?? ['skill', 'code', 'data', 'binary'])
+    const includeHelpers = options?.includeHelpers ?? builtinHelpersEnabled()
+    const helperRegistry = options?.helperRegistry ?? BUILTIN_HELPERS
+
+    // Helpers are independent of `selectedIds` — they ship with the
+    // runtime, not with the user's bundle — so we project them eagerly
+    // and only short-circuit the entries projection when nothing is
+    // selected.
+    const helpers = includeHelpers
+        ? helperRegistry.map<SandboxHelperEntry>((h) => ({
+              name: h.name,
+              relPath: h.relPath,
+              // `digest` and `sizeBytes` are filled in by `SandboxSession`
+              // once the bytes are loaded. Surfacing placeholders here
+              // would invite stale cache hits, so we leave them empty
+              // and rely on the session to enrich the manifest in place.
+              digest: '',
+              sizeBytes: 0
+          }))
+        : []
 
     if (!selectedIds?.length) {
-        return { skillsDir, outputDir, entries: [] }
+        return { skillsDir, outputDir, helpersDir, entries: [], helpers }
     }
 
     const reachable = computeReachable(selectedIds, bundle)
@@ -174,7 +246,7 @@ export const buildManifest = (bundle: SkillBundle, selectedIds: string[], option
 
     // Stable ordering makes logs and the LLM-facing tree hint deterministic.
     const entries = Array.from(byPath.values()).sort((a, b) => a.relPath.localeCompare(b.relPath))
-    return { skillsDir, outputDir, entries }
+    return { skillsDir, outputDir, helpersDir, entries, helpers }
 }
 
 // ---------------------------------------------------------------------------
@@ -222,8 +294,11 @@ const extractExtension = (relPath: string, fallbackName: string): string => {
 /**
  * Minimal POSIX `path.join` — we avoid importing `node:path` here so this
  * file stays trivially tree-shakeable and avoids Windows-path surprises.
+ *
+ * Exported so the sandbox session can share the exact same join semantics
+ * when materialising helpers under `helpersDir`.
  */
-const joinPosix = (a: string, b: string): string => {
+export const joinPosix = (a: string, b: string): string => {
     if (!a) return b
     if (!b) return a
     const left = a.endsWith('/') ? a.slice(0, -1) : a
