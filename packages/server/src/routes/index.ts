@@ -26,6 +26,7 @@ import loadPromptRouter from './load-prompts'
 import logsRouter from './log'
 import marketplacesRouter from './marketplaces'
 import customMcpServersRouter from './custom-mcp-servers'
+import skillsV2Router from './skills-v2'
 import nodeConfigRouter from './node-configs'
 import nodeCustomFunctionRouter from './node-custom-functions'
 import nodeIconRouter from './node-icons'
@@ -130,6 +131,7 @@ router.use('/text-to-speech', textToSpeechRouter)
 router.use('/custom-mcp-servers', customMcpServersRouter)
 router.use('/mcp-server', mcpServerRouter)
 router.use('/mcp', mcpEndpointRouter)
+router.use('/skills-v2', skillsV2Router)
 
 router.use('/auth', authRouter)
 router.use('/audit', IdentityManager.checkFeatureByPlan('feat:login-activity'), auditRouter)

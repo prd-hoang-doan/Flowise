@@ -1,0 +1,457 @@
+{
+    "schemaVersion": 1,
+    "bundleId": "9b8c2f5875c490f81f503ce70e8427712378ee957e0a1d8af7ee5a7bab1b9b71",
+    "workspaceId": "e7a37c15-47d0-4cd2-980f-ac6280e82f52",
+    "skillId": "30a1a7d6-b20a-41e4-afdf-16ca949d46f4",
+    "builtAt": "2026-04-20T15:13:20.721Z",
+    "entries": {
+        "8b836f8d-258f-4486-af52-8dfbbccaebbe": {
+            "nodeId": "8b836f8d-258f-4486-af52-8dfbbccaebbe",
+            "kind": "skill",
+            "name": "email-drafter.md",
+            "path": "email-drafter.md",
+            "source": {
+                "nodeId": "8b836f8d-258f-4486-af52-8dfbbccaebbe",
+                "contentDigest": "2f9a748543a23d2d951efbb0aa7f6a2f68d241165fbe3aae7411f3ade8f3a0ed"
+            },
+            "tools": {
+                "dependencies": [],
+                "references": []
+            },
+            "files": {
+                "references": [
+                    {
+                        "source": "app",
+                        "nodeId": "6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0"
+                    },
+                    {
+                        "source": "app",
+                        "nodeId": "1d3f377d-14c5-4182-b297-0e5b78674cdd"
+                    },
+                    {
+                        "source": "app",
+                        "nodeId": "74fb7098-b125-4d75-b19f-ce01bcba1cee"
+                    },
+                    {
+                        "source": "app",
+                        "nodeId": "be13f375-86ff-4a7d-8a81-94dd52678e0d"
+                    }
+                ]
+            },
+            "content": `# Email Drafter
+
+You are writing on behalf of the hiring manager. Draft a single,
+professional email to the interview panel that summarises the
+screening outcome and attaches the tailored interview plan.
+
+## Context
+
+**Screening report:**
+./resume-screener.md
+
+**Interview plan:**
+./interview-questions.md
+
+**Email sending tool:**
+
+## Instructions
+
+1. Use a subject line of the form:
+   \`[Interview
+            ] <Role> — <Candidate name> — <Verdict>\`.
+2. Keep the email under 250 words.
+3. Structure the body as:
+    - One-line TL;DR (verdict + overall score).
+    - Three bullets: top strengths.
+    - Two bullets: risks to probe.
+    - "Interview plan" section with the behavioral and technical
+      questions inlined (not as an attachment).
+    - Logistical paragraph: 45 minutes, virtual, target dates next
+      week.
+4. End with a call to action: reply by EOD if anyone cannot cover the
+   slot.
+
+## Output format
+
+Return the final email as plain Markdown, then — on a new line after a
+horizontal rule — return a JSON call-plan for the \`send_email\` tool:
+
+\`\`\`json
+{
+                "to": [
+                    "panel@example.com"
+                ],
+                "cc": [
+                    "hiring-manager@example.com"
+                ],
+                "subject": "…",
+                "body_markdown": "…"
+            }
+\`\`\`
+
+**Do not actually invoke** the \`send_email\` tool unless the user in
+\`{
+                {question
+                }
+            }\` explicitly says "send it". Until then the JSON block is
+a preview only.
+
+## Metadata
+
+\`\`\`json
+{
+                "tools": {
+                    "<<UUID_FOR_send_email>>": {
+                        "type": "custom",
+                        "provider": "comms",
+                        "toolName": "send_email",
+                        "credentialId": "cred-smtp",
+                        "enabled": true
+                    }
+                }
+            }
+\`\`\`
+`,
+            "directTools": [],
+            "directFiles": [
+                {
+                    "source": "app",
+                    "nodeId": "6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0"
+                },
+                {
+                    "source": "app",
+                    "nodeId": "1d3f377d-14c5-4182-b297-0e5b78674cdd"
+                }
+            ]
+        },
+        "1d3f377d-14c5-4182-b297-0e5b78674cdd": {
+            "nodeId": "1d3f377d-14c5-4182-b297-0e5b78674cdd",
+            "kind": "skill",
+            "name": "interview-questions.md",
+            "path": "interview-questions.md",
+            "source": {
+                "nodeId": "1d3f377d-14c5-4182-b297-0e5b78674cdd",
+                "contentDigest": "56dc0cf50b7522db48999c3228c0e138d48e68a19dbf314f3738172ff12f79bb"
+            },
+            "tools": {
+                "dependencies": [],
+                "references": []
+            },
+            "files": {
+                "references": [
+                    {
+                        "source": "app",
+                        "nodeId": "6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0"
+                    },
+                    {
+                        "source": "app",
+                        "nodeId": "74fb7098-b125-4d75-b19f-ce01bcba1cee"
+                    },
+                    {
+                        "source": "app",
+                        "nodeId": "be13f375-86ff-4a7d-8a81-94dd52678e0d"
+                    }
+                ]
+            },
+            "content": `# Interview Question Generator
+
+You are an expert interviewer. Given a screening report for a candidate,
+produce a tailored interview plan that probes their strongest signals
+and pressure-tests the identified gaps.
+
+## Context
+
+**Screening report (from the resume-screener skill):**
+./resume-screener.md
+
+
+## Instructions
+
+Use the screening report as the source of truth for the candidate's
+strengths, gaps, and seniority. If the screener highlighted a risk,
+make sure at least one technical question targets that risk.
+
+Generate exactly **ten** questions, split as:
+
+- **5 behavioral questions** — STAR-oriented; each must list the exact
+  signal you are trying to elicit.
+- **5 technical questions** — of increasing difficulty; tag each as
+  \`easy | medium | hard | expert\`.
+
+For every question also provide a **follow-up probe** the interviewer
+can use if the candidate's first answer is shallow.
+
+## Output format (strict)
+
+Return a JSON document with this shape (wrap it in a fenced code block
+labelled \`json\`):
+
+\`\`\`json
+{
+                "behavioral": [
+                    {
+                        "question": "…",
+                        "signal": "…",
+                        "followup": "…"
+                    }
+                ],
+                "technical": [
+                    {
+                        "question": "…",
+                        "difficulty": "medium",
+                        "followup": "…"
+                    }
+                ]
+            }
+\`\`\`
+
+If you have access to the python tool above, use it to validate the
+JSON structure before returning it. Otherwise double-check by hand.
+
+## Metadata
+
+\`\`\`json
+{
+                "tools": {
+                    "<<UUID_FOR_python_runner>>": {
+                        "type": "builtin",
+                        "provider": "sandbox",
+                        "toolName": "python",
+                        "enabled": true
+                    }
+                }
+            }
+\`\`\`
+`,
+            "directTools": [],
+            "directFiles": [
+                {
+                    "source": "app",
+                    "nodeId": "6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0"
+                }
+            ]
+        },
+        "74fb7098-b125-4d75-b19f-ce01bcba1cee": {
+            "nodeId": "74fb7098-b125-4d75-b19f-ce01bcba1cee",
+            "kind": "data",
+            "name": "job-description.txt",
+            "path": "job-description.txt",
+            "source": {
+                "nodeId": "74fb7098-b125-4d75-b19f-ce01bcba1cee",
+                "contentDigest": "882a1e9b24bb1abcee40206604ededa5fba38396f42de8fa699f7e326f9a2116"
+            },
+            "tools": {
+                "dependencies": [],
+                "references": []
+            },
+            "files": {
+                "references": []
+            },
+            "content": "",
+            "directTools": [],
+            "directFiles": []
+        },
+        "6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0": {
+            "nodeId": "6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0",
+            "kind": "skill",
+            "name": "resume-screener.md",
+            "path": "resume-screener.md",
+            "source": {
+                "nodeId": "6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0",
+                "contentDigest": "76591755a752ccbbbaeb0771771aa5b9ef66d0e14ae03db695a8cebf7c26b103"
+            },
+            "tools": {
+                "dependencies": [],
+                "references": []
+            },
+            "files": {
+                "references": [
+                    {
+                        "source": "app",
+                        "nodeId": "74fb7098-b125-4d75-b19f-ce01bcba1cee"
+                    },
+                    {
+                        "source": "app",
+                        "nodeId": "be13f375-86ff-4a7d-8a81-94dd52678e0d"
+                    }
+                ]
+            },
+            "content": `# Resume Screening Skill
+
+You are an expert technical recruiter. Your job is to produce a concise,
+evidence-backed screening report for a single candidate against the open
+role below.
+
+## Context
+
+- **Job description** — at ./job-description.txt.
+  Treat it as the authoritative source of responsibilities, required
+  skills, and nice-to-haves.
+- **Scoring algorithm** — deterministic numeric scorer at
+ ./scoring_algorithm.js. You **must** run it on
+  every candidate and use the numbers it returns verbatim.
+
+> You do not need to remember shell incantations for these files. The
+> Skill runtime appends an **Execution helpers** block to this tool's
+> response that tells you exactly which sandbox command runs each
+> referenced file. Follow those lines as-is, only substituting argument
+> placeholders with the real resume / JD text.
+
+The scorer accepts two positional arguments: \`argv[
+                2
+            ]\` is the candidate
+resume text, \`argv[
+                3
+            ]\` is the job description text. It prints a JSON
+object to stdout like:
+
+\`\`\`json
+{
+                "technical_fit": 6.4,
+                "experience_level": 8,
+                "culture_fit": 7.0,
+                "overall": 7.1
+            }
+\`\`\`
+
+If \`status !== "ok"\` or \`exitCode !== 0\` in the tool envelope, surface
+the \`error.message\` (or \`stderr\`) in your final report and fall back
+to manual scoring.
+
+### Sandbox not available?
+
+If the Skill node is running in fallback mode (no E2B API key on the
+server, or the \`Enable Sandbox Shell\` toggle is off), the Execution
+helpers block will be absent and no \`bash_*\` tool will appear in your
+tool list. In that case, skip step 2 of the Instructions, read the JD
+file contents from the prompt context, score manually, and clearly
+flag "execution unavailable" in the \`Debug — scoring tool trace\`
+section.
+
+
+## Instructions
+
+1. Read the candidate resume provided in \`{
+                {question
+                }
+            }\`. If you need
+   the full JD text in-context, read the referenced job description
+   file via the helper line at the bottom of this response.
+2. **Run the scoring script** using the bash helper line at the bottom
+   of this response; capture the four numeric scores from \`stdout\`.
+3. Identify the top 3 matches and top 2 gaps against the JD.
+4. Produce an overall recommendation: **Strong Hire / Hire / Maybe / No**.
+
+## Output format (strict)
+
+Return your answer as Markdown with these sections, in this order.
+
+### Summary
+
+One paragraph (≤80 words) recommending a verdict with evidence.
+
+### Scores
+
+Use the EXACT numeric values returned by the scoring script — do not
+round or adjust them. Add a final "Evidence" column with a short
+qualitative justification.
+
+| Dimension        | Score (1–10) | Evidence |
+| ---------------- | :----------: | -------- |
+| Technical fit    |              |          |
+| Experience level |              |          |
+| Culture fit      |              |          |
+| **Overall**      |              |          |
+
+### Matches
+
+-   …
+
+### Gaps / risks
+
+-   …
+
+### Recommended next step
+
+One sentence.
+
+### Debug — scoring tool trace
+
+Include the following verbatim in your final answer, as a fenced JSON
+code block:
+
+-   The exact \`{command: "..."
+            }\` you sent to the \`bash_*\` tool.
+-   The raw envelope the tool returned (or the error text, if it
+    failed).
+
+If the sandbox was unavailable, write \`{
+                "engine": "unavailable"
+            }\` in
+place of the envelope so test automation can distinguish fallback
+runs from executed ones. This section is REQUIRED for test
+verification.
+
+## Metadata
+
+\`\`\`json
+{
+                "tools": {
+                    "<<UUID_FOR_candidate_lookup>>": {
+                        "type": "custom",
+                        "provider": "hr_platform",
+                        "toolName": "candidate_lookup",
+                        "enabled": true
+                    }
+                }
+            }
+\`\`\`
+
+`,
+            "directTools": [],
+            "directFiles": [
+                {
+                    "source": "app",
+                    "nodeId": "74fb7098-b125-4d75-b19f-ce01bcba1cee"
+                },
+                {
+                    "source": "app",
+                    "nodeId": "be13f375-86ff-4a7d-8a81-94dd52678e0d"
+                }
+            ]
+        },
+        "be13f375-86ff-4a7d-8a81-94dd52678e0d": {
+            "nodeId": "be13f375-86ff-4a7d-8a81-94dd52678e0d",
+            "kind": "code",
+            "name": "scoring_algorithm.js",
+            "path": "scoring_algorithm.js",
+            "source": {
+                "nodeId": "be13f375-86ff-4a7d-8a81-94dd52678e0d",
+                "contentDigest": "982922f0786e76c63d4bf8a8901e7ca6004058e8d56cde8584a28e6135c4813c"
+            },
+            "tools": {
+                "dependencies": [],
+                "references": []
+            },
+            "files": {
+                "references": []
+            },
+            "content": "",
+            "directTools": [],
+            "directFiles": []
+        }
+    },
+    "dependencyGraph": {
+        "8b836f8d-258f-4486-af52-8dfbbccaebbe": ["6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0", "1d3f377d-14c5-4182-b297-0e5b78674cdd"],
+        "1d3f377d-14c5-4182-b297-0e5b78674cdd": ["6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0"],
+        "74fb7098-b125-4d75-b19f-ce01bcba1cee": [],
+        "6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0": ["74fb7098-b125-4d75-b19f-ce01bcba1cee", "be13f375-86ff-4a7d-8a81-94dd52678e0d"],
+        "be13f375-86ff-4a7d-8a81-94dd52678e0d": []
+    },
+    "reverseGraph": {
+        "6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0": ["8b836f8d-258f-4486-af52-8dfbbccaebbe", "1d3f377d-14c5-4182-b297-0e5b78674cdd"],
+        "1d3f377d-14c5-4182-b297-0e5b78674cdd": ["8b836f8d-258f-4486-af52-8dfbbccaebbe"],
+        "74fb7098-b125-4d75-b19f-ce01bcba1cee": ["6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0"],
+        "be13f375-86ff-4a7d-8a81-94dd52678e0d": ["6e66d6ba-74fb-4e9f-be45-5a5d2dbc39f0"]
+    }
+}

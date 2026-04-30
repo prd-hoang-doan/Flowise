@@ -121,6 +121,113 @@ export interface ITool {
     workspaceId: string
 }
 
+export interface ISkillV2 {
+    id: string
+    workspaceId: string
+    name: string
+    description?: string | null
+    iconSrc?: string | null
+    color?: string | null
+    fileTree: string
+    contentDigest: string
+    publishedBundleId?: string | null
+    createdDate: Date
+    updatedDate: Date
+}
+
+export interface ISkillFolder {
+    id: string
+    name: string
+    color: string
+    iconSrc?: string
+    description?: string
+    mode?: string
+    captionModelConfig?: string
+    embeddingModelConfig?: string
+    updatedDate: Date
+    createdDate: Date
+    workspaceId: string
+}
+
+export interface ISkillFile {
+    id: string
+    folderId: string
+    name: string
+    description?: string
+    filename?: string
+    content?: string
+    compileHash?: string
+    updatedDate: Date
+    createdDate: Date
+    workspaceId: string
+}
+
+export interface ISkillAsset {
+    id: string
+    folderId: string
+    fileId: string
+    filename: string
+    mimeType: string
+    storagePath: string
+    caption?: string
+    updatedDate: Date
+    createdDate: Date
+    workspaceId: string
+}
+
+export interface ISkillNode {
+    id: string
+    skillFileId: string
+    folderId: string
+    type: string
+    title: string
+    content: string
+    priority: number
+    triggers?: string
+    cluster?: string
+    embeddingText?: string
+    orderIndex: number
+    updatedDate: Date
+    createdDate: Date
+    workspaceId: string
+}
+
+export interface ISkillEdge {
+    id: string
+    skillFileId: string
+    folderId: string
+    fromNodeId: string
+    toNodeId: string
+    relation: string
+    createdDate: Date
+    workspaceId: string
+}
+
+export interface ISkillCompileCache {
+    id: string
+    skillFileId: string
+    folderId: string
+    hash: string
+    compiledPrompt: string
+    tokenCount: number
+    executionMode: string
+    createdDate: Date
+    workspaceId: string
+}
+
+export interface ISkillNodeEmbedding {
+    id: string
+    nodeId: string
+    skillFileId: string
+    folderId: string
+    embedding: string
+    dimension: number
+    modelId: string
+    contentHash: string
+    createdDate: Date
+    workspaceId: string
+}
+
 export interface IAssistant {
     id: string
     details: string
