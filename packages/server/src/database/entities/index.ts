@@ -29,6 +29,8 @@ import { LoginMethod } from '../../enterprise/database/entities/login-method.ent
 import { LoginSession } from '../../enterprise/database/entities/login-session.entity'
 import { ScheduleRecord } from './ScheduleRecord'
 import { ScheduleTriggerLog } from './ScheduleTriggerLog'
+import { DebugVariable } from './DebugVariable'
+import { DebugNodeExecution } from './DebugNodeExecution'
 
 export const entities = {
     ChatFlow,
@@ -63,5 +65,7 @@ export const entities = {
     LoginMethod,
     LoginSession,
     ScheduleRecord,
-    ScheduleTriggerLog
+    ScheduleTriggerLog,
+    DebugVariable,
+    DebugNodeExecution
 }

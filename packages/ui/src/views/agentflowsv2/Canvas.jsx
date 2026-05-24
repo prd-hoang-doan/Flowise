@@ -34,6 +34,8 @@ import ScheduleHistoryFAB from '@/views/schedule/ScheduleHistoryFAB'
 import WebhookListenerFAB from '@/views/webhooklistener/WebhookListenerFAB'
 import ValidationPopUp from '@/views/chatmessage/ValidationPopUp'
 import { flowContext } from '@/store/context/ReactFlowContext'
+import { StepDebugProvider, Inspector, RunStepForm, StepDebugToast, useStepDebug } from './step-debug'
+import { STEP_DEBUG_ACTIONS } from './step-debug/store/actions'
 
 // API
 import nodesApi from '@/api/nodes'
@@ -255,9 +257,22 @@ const AgentflowCanvas = () => {
         }
     }
 
+    const stepDebugCtx = useStepDebug()
+
+    // Push the live ReactFlow graph into the StepDebug context so the Debug
+    // Step tab can introspect upstream nodes (Start formInputTypes, template
+    // references, etc.) without prop-drilling. Stored in a ref behind a
+    // callback so canvas drags don't churn the Inspector.
+    useEffect(() => {
+        if (stepDebugCtx?.setGraph) stepDebugCtx.setGraph(nodes, edges)
+    }, [nodes, edges, stepDebugCtx])
+
     // eslint-disable-next-line
     const onNodeClick = useCallback((event, clickedNode) => {
         setSelectedNode(clickedNode)
+        if (stepDebugCtx?.dispatch && clickedNode?.id) {
+            stepDebugCtx.dispatch({ type: STEP_DEBUG_ACTIONS.SET_SELECTED_NODE, nodeId: clickedNode.id })
+        }
         setNodes((nds) =>
             nds.map((node) => {
                 if (node.id === clickedNode.id) {
@@ -823,9 +838,23 @@ const AgentflowCanvas = () => {
                     </div>
                 </Box>
                 <ConfirmDialog />
+                <Inspector resolveNodeLabel={(id) => nodes?.find((n) => n.id === id)?.data?.label || id} />
+                <RunStepForm />
+                <StepDebugToast />
             </Box>
         </>
     )
 }
 
-export default AgentflowCanvas
+const AgentflowCanvasWithStepDebug = () => {
+    const URLpath = document.location.pathname.toString().split('/')
+    const chatflowId =
+        URLpath[URLpath.length - 1] === 'canvas' || URLpath[URLpath.length - 1] === 'agentcanvas' ? '' : URLpath[URLpath.length - 1]
+    return (
+        <StepDebugProvider chatflowId={chatflowId}>
+            <AgentflowCanvas />
+        </StepDebugProvider>
+    )
+}
+
+export default AgentflowCanvasWithStepDebug

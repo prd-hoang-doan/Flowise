@@ -352,6 +352,102 @@ export interface IAgentflowExecutedData {
     status?: ExecutionState
 }
 
+/**
+ * Step Debugger — sentinel `nodeId` values used by DebugVariable rows that do
+ * NOT map to a real ReactFlow node. They surface the existing Flowise namespaces
+ * (Flow State, form, webhook, system, chat history) in the per-builder pool
+ * without inventing new wire vocabulary.
+ */
+export const DEBUG_NODE_SENTINELS = {
+    FLOW_STATE: '__flow_state__',
+    FORM: '__form__',
+    WEBHOOK: '__webhook__',
+    CHAT_HISTORY: '__chat_history__',
+    SYSTEM: '__system__'
+} as const
+
+export type DebugNodeSentinel = (typeof DEBUG_NODE_SENTINELS)[keyof typeof DEBUG_NODE_SENTINELS]
+
+export type DebugVariableScope = 'node' | 'flow_state' | 'form' | 'webhook' | 'system' | 'chat_history'
+
+export type DebugVariableValueType = 'string' | 'number' | 'boolean' | 'json' | 'array' | 'file'
+
+export interface IDebugVariable {
+    id: string
+    chatflowId: string
+    workspaceId: string
+    userId: string
+    nodeId: string
+    name: string
+    valueType: DebugVariableValueType
+    value: unknown
+    description?: string | null
+    visible: boolean
+    editable: boolean
+    edited: boolean
+    sizeBytes: number
+    lastRunAt?: Date | null
+    createdDate: Date
+    updatedDate: Date
+}
+
+export interface IDebugNodeExecution {
+    id: string
+    chatflowId: string
+    workspaceId: string
+    userId: string
+    nodeId: string
+    nodeLabel: string
+    data: INodeExecutionData
+    status: ExecutionState
+    durationMs?: number | null
+    createdDate: Date
+}
+
+export type IDebugStepRunData = INodeExecutionData
+
+export interface IDebugVariableSummary {
+    id: string
+    scope: DebugVariableScope
+    nodeId: string
+    name: string
+    valueType: DebugVariableValueType
+    edited: boolean
+    visible: boolean
+    sizeBytes: number
+    isTruncated: boolean
+    description?: string | null
+    updatedDate: Date
+}
+
+export interface IStepRunArgs {
+    chatflowId: string
+    nodeId: string
+    userId: string
+    workspaceId: string
+    orgId: string
+    subscriptionId: string
+    productId: string
+    inputs?: Record<string, unknown>
+    files?: IFileUpload[]
+    question?: string
+    sessionId?: string
+    streaming: boolean
+    chatId: string
+    baseURL: string
+    isInternal: boolean
+    abortController?: AbortController
+}
+
+export interface IStepRunResult {
+    nodeId: string
+    nodeLabel: string
+    status: ExecutionState
+    data: INodeExecutionData
+    durationMs: number
+    capturedVariables: IDebugVariableSummary[]
+}
+
 export interface IMessage {
     message: string
     type: MessageType

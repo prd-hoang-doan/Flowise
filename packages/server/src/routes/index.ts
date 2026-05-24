@@ -4,6 +4,7 @@ import assistantsRouter from './assistants'
 import attachmentsRouter from './attachments'
 import chatMessageRouter from './chat-messages'
 import chatflowsRouter from './chatflows'
+import chatflowsDebugRouter from './chatflows-debug'
 import chatflowsStreamingRouter from './chatflows-streaming'
 import chatflowsUploadsRouter from './chatflows-uploads'
 import componentsCredentialsRouter from './components-credentials'
@@ -79,6 +80,11 @@ router.use('/ping', pingRouter)
 router.use('/apikey', apikeyRouter)
 router.use('/assistants', assistantsRouter)
 router.use('/attachments', attachmentsRouter)
+// Mounted before chatflowsRouter so /:id/debug/* sub-tree is consulted first.
+// Express tries mounts in registration order; each router's handlers only match
+// when method+path align, so the bare chatflows CRUD endpoints remain
+// reachable when the debug router yields with `next()`.
+router.use('/chatflows', chatflowsDebugRouter)
 router.use('/chatflows', chatflowsRouter)
 router.use('/chatflows-streaming', chatflowsStreamingRouter)
 router.use('/chatmessage', chatMessageRouter)

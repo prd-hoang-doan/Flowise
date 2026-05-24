@@ -94,7 +94,7 @@ interface IProcessNodeOutputsParams {
     chatId: string
 }
 
-interface IAgentFlowRuntime {
+export interface IAgentFlowRuntime {
     state?: ICommonObject
     chatHistory?: IMessage[]
     form?: Record<string, any>
@@ -122,7 +122,7 @@ const resolveWebhookRefs = (template: string, webhook: Record<string, any> | und
     })
 }
 
-interface IExecuteNodeParams {
+export interface IExecuteNodeParams {
     nodeId: string
     reactFlowNode: IReactFlowNode
     nodes: IReactFlowNode[]
@@ -1048,7 +1048,7 @@ function combineNodeInputs(receivedInputs: Map<string, any>): any {
  * @param params - Parameters needed for node execution
  * @returns The result of the node execution
  */
-const executeNode = async ({
+export const executeNode = async ({
     nodeId,
     reactFlowNode,
     nodes,

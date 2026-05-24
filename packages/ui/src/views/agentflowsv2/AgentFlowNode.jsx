@@ -11,6 +11,7 @@ import { ButtonGroup, Avatar, Box, Typography, IconButton, Tooltip } from '@mui/
 import MainCard from '@/ui-component/cards/MainCard'
 import { flowContext } from '@/store/context/ReactFlowContext'
 import NodeInfoDialog from '@/ui-component/dialog/NodeInfoDialog'
+import { NodeStepRunControl } from './step-debug'
 
 // icons
 import {
@@ -257,6 +258,7 @@ const AgentFlowNode = ({ data }) => {
                     >
                         <IconInfoCircle size={20} />
                     </IconButton>
+                    <NodeStepRunControl nodeId={data.id} nodeName={data.name} isChildNode={Boolean(data.parentNode)} />
                 </ButtonGroup>
             </StyledNodeToolbar>
             <CardWrapper

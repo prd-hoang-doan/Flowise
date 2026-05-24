@@ -24,6 +24,7 @@ import errorHandlerMiddleware from './middlewares/errors'
 import { NodesPool } from './NodesPool'
 import { QueueManager } from './queue/QueueManager'
 import { ScheduleBeat } from './schedule/ScheduleBeat'
+import { startStepDebuggerGC } from './utils/agentflow-step-debug'
 import { RedisEventSubscriber } from './queue/RedisEventSubscriber'
 import { initWebhookListenerRegistry } from './services/webhook-listener'
 import flowiseApiV1Router from './routes'
@@ -162,6 +163,9 @@ export class App {
             // Init ScheduleBeat (works in both queue and non-queue mode)
             await ScheduleBeat.getInstance().init()
             logger.info('⏰ [server]: ScheduleBeat initialized successfully')
+
+            startStepDebuggerGC()
+            logger.info('🧹 [server]: Step Debugger GC scheduled')
 
             logger.info('🎉 [server]: All initialization steps completed successfully!')
         } catch (error) {
