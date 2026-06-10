@@ -34,7 +34,7 @@ import ScheduleHistoryFAB from '@/views/schedule/ScheduleHistoryFAB'
 import WebhookListenerFAB from '@/views/webhooklistener/WebhookListenerFAB'
 import ValidationPopUp from '@/views/chatmessage/ValidationPopUp'
 import { flowContext } from '@/store/context/ReactFlowContext'
-import { StepDebugProvider, Inspector, RunStepForm, StepDebugToast, useStepDebug } from './step-debug'
+import { StepDebugProvider, Inspector, RunStepForm, StepDebugToast, VariablePoolPanel, useStepDebug } from './step-debug'
 import { STEP_DEBUG_ACTIONS } from './step-debug/store/actions'
 
 // API
@@ -46,7 +46,7 @@ import useApi from '@/hooks/useApi'
 import useConfirm from '@/hooks/useConfirm'
 
 // icons
-import { IconX, IconRefreshAlert, IconMagnetFilled, IconMagnetOff, IconArtboard, IconArtboardOff } from '@tabler/icons-react'
+import { IconX, IconRefreshAlert, IconMagnetFilled, IconMagnetOff, IconArtboard, IconArtboardOff, IconDatabase } from '@tabler/icons-react'
 
 // utils
 import {
@@ -266,6 +266,42 @@ const AgentflowCanvas = () => {
     useEffect(() => {
         if (stepDebugCtx?.setGraph) stepDebugCtx.setGraph(nodes, edges)
     }, [nodes, edges, stepDebugCtx])
+
+    // Hydrate Variable Pool panel preferences (open + height) from
+    // localStorage on first mount for this chatflow. Keyed per-chatflow so
+    // tinkering with one flow does not surprise the user when they open
+    // another. Writes happen on every change of either value below.
+    useEffect(() => {
+        if (!stepDebugCtx?.dispatch || !chatflowId) return
+        try {
+            const raw = window.localStorage.getItem(`flowise:varPool:${chatflowId}`)
+            if (!raw) return
+            const parsed = JSON.parse(raw)
+            if (typeof parsed?.heightPx === 'number') {
+                stepDebugCtx.dispatch({ type: STEP_DEBUG_ACTIONS.SET_VARIABLE_POOL_HEIGHT, height: parsed.heightPx })
+            }
+            if (parsed?.open === true) {
+                stepDebugCtx.dispatch({ type: STEP_DEBUG_ACTIONS.OPEN_VARIABLE_POOL })
+            }
+        } catch {
+            /* ignore localStorage errors */
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chatflowId])
+
+    const variablePoolOpen = stepDebugCtx?.state?.variablePoolOpen ?? false
+    const variablePoolHeightPx = stepDebugCtx?.state?.variablePoolHeightPx ?? 320
+    useEffect(() => {
+        if (!chatflowId) return
+        try {
+            window.localStorage.setItem(
+                `flowise:varPool:${chatflowId}`,
+                JSON.stringify({ open: variablePoolOpen, heightPx: variablePoolHeightPx })
+            )
+        } catch {
+            /* ignore localStorage errors */
+        }
+    }, [chatflowId, variablePoolOpen, variablePoolHeightPx])
 
     // eslint-disable-next-line
     const onNodeClick = useCallback((event, clickedNode) => {
@@ -833,6 +869,24 @@ const AgentflowCanvas = () => {
                                     <ChatPopUp isAgentCanvas={true} chatflowid={chatflowId} onOpenChange={setChatPopupOpen} />
                                 )}
                                 {!chatPopupOpen && <ValidationPopUp isAgentCanvas={true} chatflowid={chatflowId} />}
+                                <Fab
+                                    sx={{
+                                        right: 90,
+                                        bottom: 20,
+                                        position: 'absolute',
+                                        color: 'white',
+                                        background: variablePoolOpen ? 'primary.main' : '#4b5563',
+                                        '&:hover': {
+                                            background: variablePoolOpen ? 'primary.dark' : '#374151'
+                                        }
+                                    }}
+                                    size='small'
+                                    aria-label='Toggle Variable Pool panel'
+                                    title='Variable Pool'
+                                    onClick={() => stepDebugCtx?.dispatch?.({ type: STEP_DEBUG_ACTIONS.TOGGLE_VARIABLE_POOL })}
+                                >
+                                    <IconDatabase />
+                                </Fab>
                             </ReactFlow>
                         </div>
                     </div>
@@ -840,6 +894,7 @@ const AgentflowCanvas = () => {
                 <ConfirmDialog />
                 <Inspector resolveNodeLabel={(id) => nodes?.find((n) => n.id === id)?.data?.label || id} />
                 <RunStepForm />
+                <VariablePoolPanel />
                 <StepDebugToast />
             </Box>
         </>

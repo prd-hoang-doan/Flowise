@@ -24,10 +24,7 @@ const NodeVarsTab = ({ nodeId }) => {
     const filtered = useMemo(() => {
         if (!query) return rows
         return rows.filter((r) => {
-            return (
-                r.name.toLowerCase().includes(query) ||
-                (r.valueType || '').toLowerCase().includes(query)
-            )
+            return r.name.toLowerCase().includes(query) || (r.valueType || '').toLowerCase().includes(query)
         })
     }, [rows, query])
 

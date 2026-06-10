@@ -49,6 +49,7 @@ import { AddCustomMcpServer1766000000000 } from './1766000000000-AddCustomMcpSer
 import { AddMcpServerConfigToChatFlow1767000000000 } from './1767000000000-AddMcpServerConfigToChatFlow'
 import { AddScheduleEntities1772000000000 } from './1772000000000-AddScheduleEntities'
 import { AddAgentflowDebugEntities1777000000000 } from './1777000000000-AddAgentflowDebugEntities'
+import { AddDebugVariableSnapshots1777010000000 } from './1777010000000-AddDebugVariableSnapshots'
 
 import { AddAuthTables1720230151482 } from '../../../enterprise/database/migrations/mysql/1720230151482-AddAuthTables'
 import { AddWorkspace1720230151484 } from '../../../enterprise/database/migrations/mysql/1720230151484-AddWorkspace'
@@ -124,5 +125,6 @@ export const mysqlMigrations = [
     AddCustomMcpServer1766000000000,
     AddMcpServerConfigToChatFlow1767000000000,
     AddScheduleEntities1772000000000,
-    AddAgentflowDebugEntities1777000000000
+    AddAgentflowDebugEntities1777000000000,
+    AddDebugVariableSnapshots1777010000000
 ]

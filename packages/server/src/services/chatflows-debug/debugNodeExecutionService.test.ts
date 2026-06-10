@@ -47,9 +47,7 @@ describe('debugNodeExecutionService', () => {
         const createQueryBuilder = jest.fn(() => ({
             delete: () => ({ whereInIds: () => ({ execute }) })
         }))
-        stubAppDataSource.getRepository.mockImplementation((cls: any) =>
-            cls === DebugNodeExecution ? { find, createQueryBuilder } : null
-        )
+        stubAppDataSource.getRepository.mockImplementation((cls: any) => (cls === DebugNodeExecution ? { find, createQueryBuilder } : null))
         const out = await debugNodeExecutionService.gc({ keepLastN: 2 })
         expect(out.deletedCount).toBe(1)
     })

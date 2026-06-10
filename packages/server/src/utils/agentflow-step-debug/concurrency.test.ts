@@ -1,12 +1,5 @@
-import {
-    STEP_RUN_CONCURRENCY_PER_USER
-} from './constants'
-import {
-    acquireStepRunSlot,
-    releaseStepRunSlot,
-    StepRunConcurrencyExceededError,
-    __resetStepRunSlots
-} from './concurrency'
+import { STEP_RUN_CONCURRENCY_PER_USER } from './constants'
+import { acquireStepRunSlot, releaseStepRunSlot, StepRunConcurrencyExceededError, __resetStepRunSlots } from './concurrency'
 
 describe('Step Debugger concurrency semaphore', () => {
     beforeEach(() => {

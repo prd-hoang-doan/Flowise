@@ -420,6 +420,74 @@ export interface IDebugVariableSummary {
     updatedDate: Date
 }
 
+/**
+ * Snapshot of one debug variable as it existed at the moment a Step Run finished.
+ * Stored inside the parent IDebugVariableSnapshotPayload bucket; carries enough
+ * metadata for the UI to diff / render without a second fetch.
+ */
+export interface IDebugVariableSnapshotEntry {
+    id?: string
+    name: string
+    valueType: DebugVariableValueType
+    value: unknown
+    sizeBytes: number
+    edited?: boolean
+    visible?: boolean
+}
+
+/**
+ * Denormalised pool blob keyed by scope key (real nodeId or DEBUG_NODE_SENTINELS).
+ * Persisted as a single JSON column on `debug_variable_snapshot.variables`.
+ */
+export type IDebugVariableSnapshotPayload = Record<string, IDebugVariableSnapshotEntry[]>
+
+/**
+ * Sanitised summary of the IStepRunArgs body — used by the Variable Pool panel
+ * to label each snapshot with the inputs that produced it without exposing
+ * full request payloads.
+ */
+export interface IDebugVariableSnapshotRunArgs {
+    question?: string
+    sessionId?: string
+    hasInputs?: boolean
+    hasForm?: boolean
+    hasWebhook?: boolean
+}
+
+export interface IDebugVariableSnapshot {
+    id: string
+    chatflowId: string
+    workspaceId: string
+    userId: string
+    runId: string
+    nodeId: string
+    nodeLabel: string
+    status: ExecutionState
+    durationMs?: number | null
+    variables: IDebugVariableSnapshotPayload
+    missingVariables?: string[] | null
+    runArgs?: IDebugVariableSnapshotRunArgs | null
+    createdDate: Date
+}
+
+/**
+ * Variant of IDebugVariableSnapshot returned by the list endpoint — the full
+ * `variables` blob is omitted to keep the timeline payload tiny. Detail is
+ * fetched on demand via the `get` endpoint when a snapshot is selected.
+ */
+export interface IDebugVariableSnapshotSummary {
+    id: string
+    runId: string
+    nodeId: string
+    nodeLabel: string
+    status: ExecutionState
+    durationMs?: number | null
+    missingVariableCount: number
+    variableCount: number
+    runArgs?: IDebugVariableSnapshotRunArgs | null
+    createdDate: Date
+}
+
 export interface IStepRunArgs {
     chatflowId: string
     nodeId: string

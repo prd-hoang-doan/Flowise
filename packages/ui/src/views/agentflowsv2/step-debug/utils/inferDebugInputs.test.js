@@ -13,10 +13,7 @@ const startNode = (overrides = {}) => ({
                 { type: 'boolean', name: 'verbose', label: 'Verbose' },
                 { type: 'options', name: 'mode', label: 'Mode', addOptions: [{ option: 'fast' }, { option: 'pro' }] }
             ],
-            startState: [
-                { key: 'phase', value: 'init' },
-                { key: 'errors' }
-            ]
+            startState: [{ key: 'phase', value: 'init' }, { key: 'errors' }]
         },
         ...overrides
     }

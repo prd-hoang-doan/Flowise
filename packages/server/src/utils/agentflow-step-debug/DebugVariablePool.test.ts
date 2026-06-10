@@ -78,12 +78,7 @@ describe('DebugVariablePool', () => {
 
     it('request overrides take priority over persisted Debug Variable rows', async () => {
         const llm = makeNode('llmAgentflow_1', 'llmAgentflow')
-        const ds = buildDataSource(
-            [
-                { nodeId: DEBUG_NODE_SENTINELS.FLOW_STATE, name: 'mode', value: 'persisted' }
-            ],
-            []
-        )
+        const ds = buildDataSource([{ nodeId: DEBUG_NODE_SENTINELS.FLOW_STATE, name: 'mode', value: 'persisted' }], [])
         const out = await DebugVariablePool.build({
             appDataSource: ds as any,
             chatflowId: 'cf',

@@ -58,9 +58,11 @@ describe('debugVariableService', () => {
         stubAppDataSource.getRepository.mockImplementation((cls: any) => (cls === DebugVariable ? { find: findMock } : null))
         const rows = await debugVariableService.list(scope)
         expect(rows).toHaveLength(1)
-        expect(findMock).toHaveBeenCalledWith(expect.objectContaining({
-            select: expect.arrayContaining(['valueType', 'sizeBytes'])
-        }))
+        expect(findMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                select: expect.arrayContaining(['valueType', 'sizeBytes'])
+            })
+        )
         expect(findMock).toHaveBeenCalledWith(expect.not.objectContaining({ select: expect.arrayContaining(['value']) }))
     })
 
@@ -118,7 +120,6 @@ describe('debugVariableService', () => {
         const result = await debugVariableService.reset(scope, 'var-1')
         expect((result as any).value).toBe('last-run-value')
         expect((result as any).edited).toBe(false)
-
         ;(execRepo.findOne as jest.Mock).mockResolvedValueOnce(null as any)
         const noSource = await debugVariableService.reset(scope, 'var-1')
         expect(noSource).toBeNull()
@@ -162,9 +163,7 @@ describe('debugVariableService', () => {
         const stale = [{ id: 'a' }, { id: 'b' }]
         const find = jest.fn(async () => stale)
         const del = jest.fn(async () => ({ affected: 2 }))
-        stubAppDataSource.getRepository.mockImplementation((cls: any) =>
-            cls === DebugVariable ? { find, delete: del } : null
-        )
+        stubAppDataSource.getRepository.mockImplementation((cls: any) => (cls === DebugVariable ? { find, delete: del } : null))
         const out = await debugVariableService.gc({ idleDays: 1 })
         expect(out.deletedCount).toBe(2)
     })

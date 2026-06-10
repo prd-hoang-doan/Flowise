@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo } from 'react'
-import PropTypes from 'prop-types'
 
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Stack, Typography, Alert } from '@mui/material'
 
@@ -68,10 +67,7 @@ const RunStepForm = () => {
         }
     }, [pending])
 
-    const references = useMemo(
-        () => (pending?.missingVariables ?? []).map(parseMissingRef),
-        [pending?.missingVariables]
-    )
+    const references = useMemo(() => (pending?.missingVariables ?? []).map(parseMissingRef), [pending?.missingVariables])
 
     if (!pending || !ctx) return null
 
@@ -126,8 +122,8 @@ const RunStepForm = () => {
             <DialogContent dividers>
                 <Stack spacing={2}>
                     <Alert severity='info' variant='outlined'>
-                        This node references {references.length} variable{references.length === 1 ? '' : 's'} that have
-                        no captured value yet. Provide one-off values to continue.
+                        This node references {references.length} variable{references.length === 1 ? '' : 's'} that have no captured value
+                        yet. Provide one-off values to continue.
                     </Alert>
                     {references.map((reference) => (
                         <MissingVarField

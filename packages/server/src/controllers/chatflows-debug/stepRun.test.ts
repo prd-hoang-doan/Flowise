@@ -67,9 +67,7 @@ import { StepRunMissingVariablesError, StepRunUnsupportedNodeError } from '../..
 const baseUser = { id: 'user-1', activeWorkspaceId: 'ws-1' }
 
 const flowData = JSON.stringify({
-    nodes: [
-        { id: 'llmAgentflow_1', data: { id: 'llmAgentflow_1', name: 'llmAgentflow', label: 'LLM', inputs: {} } }
-    ],
+    nodes: [{ id: 'llmAgentflow_1', data: { id: 'llmAgentflow_1', name: 'llmAgentflow', label: 'LLM', inputs: {} } }],
     edges: []
 })
 

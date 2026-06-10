@@ -10,7 +10,6 @@
  * Anything outside this list returns HTTP 422 `STEP_RUN_UNSUPPORTED_NODE`.
  */
 export const STEP_RUN_ALLOWED_NODES = new Set<string>([
-    'startAgentflow',
     'llmAgentflow',
     'agentAgentflow',
     'toolAgentflow',
@@ -28,6 +27,7 @@ export const STEP_RUN_ALLOWED_NODES = new Set<string>([
  * rather than a generic error.
  */
 export const STEP_RUN_DEFERRED_NODES = new Set<string>([
+    'startAgentflow',
     'iterationAgentflow',
     'loopAgentflow',
     'humanInputAgentflow',

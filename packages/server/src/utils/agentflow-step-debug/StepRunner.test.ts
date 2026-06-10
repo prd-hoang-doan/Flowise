@@ -20,6 +20,10 @@ jest.mock('./DebugVariableSaver', () => {
         DebugVariableSaver: { save: jest.fn(async () => undefined) }
     }
 })
+jest.mock('../../services/chatflows-debug/debugVariableSnapshotService', () => ({
+    __esModule: true,
+    default: { captureFromCurrentState: jest.fn(async () => ({ id: 'snap-test' })) }
+}))
 jest.mock('../logger', () => ({ __esModule: true, default: { debug: jest.fn(), error: jest.fn(), info: jest.fn(), warn: jest.fn() } }))
 jest.mock('flowise-components', () => ({}), { virtual: true })
 
@@ -27,6 +31,7 @@ import { __resetStepRunSlots } from './concurrency'
 import { StepRunner, StepRunMissingVariablesError, StepRunUnsupportedNodeError } from './StepRunner'
 import { executeNode } from '../buildAgentflow'
 import { DebugVariableSaver } from './DebugVariableSaver'
+import debugVariableSnapshotService from '../../services/chatflows-debug/debugVariableSnapshotService'
 
 const mockedExecuteNode = executeNode as jest.Mock
 
@@ -221,5 +226,83 @@ describe('StepRunner', () => {
         expect(out.status).toBe('ERROR')
         expect((out.data as any).error).toBe('boom')
         expect(DebugVariableSaver.save).toHaveBeenCalled()
+    })
+
+    describe('snapshot capture', () => {
+        it('captures a snapshot on FINISHED with the run nodeId / status', async () => {
+            const chatflow = makeChatflow(makeFlowData())
+            mockedExecuteNode.mockResolvedValueOnce({ result: { id: 'llmAgentflow_1', name: 'llmAgentflow', input: {}, output: {} } })
+            const runner = new StepRunner({
+                chatflow,
+                args: buildArgs(),
+                appDataSource: baseAppDataSource,
+                componentNodes: {} as any,
+                cachePool: {} as any,
+                usageCacheManager: {} as any,
+                telemetry: stubTelemetry,
+                sseStreamer: stubSseStreamer
+            })
+            await runner.run()
+            expect(debugVariableSnapshotService.captureFromCurrentState).toHaveBeenCalledTimes(1)
+            const callArgs = (debugVariableSnapshotService.captureFromCurrentState as jest.Mock).mock.calls[0][0]
+            expect(callArgs.nodeId).toBe('llmAgentflow_1')
+            expect(callArgs.status).toBe('FINISHED')
+            expect(typeof callArgs.runId).toBe('string')
+            expect(callArgs.runId).toMatch(/^[a-f0-9-]{36}$/)
+        })
+
+        it('captures a snapshot on ERROR', async () => {
+            const chatflow = makeChatflow(makeFlowData())
+            mockedExecuteNode.mockRejectedValueOnce(new Error('boom'))
+            const runner = new StepRunner({
+                chatflow,
+                args: buildArgs(),
+                appDataSource: baseAppDataSource,
+                componentNodes: {} as any,
+                cachePool: {} as any,
+                usageCacheManager: {} as any,
+                telemetry: stubTelemetry,
+                sseStreamer: stubSseStreamer
+            })
+            await runner.run()
+            expect(debugVariableSnapshotService.captureFromCurrentState).toHaveBeenCalledTimes(1)
+            const callArgs = (debugVariableSnapshotService.captureFromCurrentState as jest.Mock).mock.calls[0][0]
+            expect(callArgs.status).toBe('ERROR')
+        })
+
+        it('does NOT capture a snapshot on STOPPED', async () => {
+            const chatflow = makeChatflow(makeFlowData())
+            mockedExecuteNode.mockRejectedValueOnce(new Error('Aborted'))
+            const runner = new StepRunner({
+                chatflow,
+                args: buildArgs(),
+                appDataSource: baseAppDataSource,
+                componentNodes: {} as any,
+                cachePool: {} as any,
+                usageCacheManager: {} as any,
+                telemetry: stubTelemetry,
+                sseStreamer: stubSseStreamer
+            })
+            await runner.run()
+            expect(debugVariableSnapshotService.captureFromCurrentState).not.toHaveBeenCalled()
+        })
+
+        it('does NOT propagate snapshot capture failures (best-effort telemetry)', async () => {
+            const chatflow = makeChatflow(makeFlowData())
+            mockedExecuteNode.mockResolvedValueOnce({ result: { id: 'llmAgentflow_1', name: 'llmAgentflow', input: {}, output: {} } })
+            ;(debugVariableSnapshotService.captureFromCurrentState as jest.Mock).mockRejectedValueOnce(new Error('db down'))
+            const runner = new StepRunner({
+                chatflow,
+                args: buildArgs(),
+                appDataSource: baseAppDataSource,
+                componentNodes: {} as any,
+                cachePool: {} as any,
+                usageCacheManager: {} as any,
+                telemetry: stubTelemetry,
+                sseStreamer: stubSseStreamer
+            })
+            const out = await runner.run()
+            expect(out.status).toBe('FINISHED')
+        })
     })
 })

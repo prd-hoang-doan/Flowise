@@ -2,7 +2,6 @@ import { canStepRun, isDeferred, STEP_RUN_ALLOWED_NODES, STEP_RUN_DEFERRED_NODES
 
 describe('canStepRun', () => {
     it.each([
-        ['startAgentflow', false, true],
         ['llmAgentflow', false, true],
         ['agentAgentflow', false, true],
         ['toolAgentflow', false, true],
@@ -16,7 +15,7 @@ describe('canStepRun', () => {
         expect(canStepRun(name, isChild)).toBe(expected)
     })
 
-    it.each(['iterationAgentflow', 'loopAgentflow', 'humanInputAgentflow', 'executeFlowAgentflow'])(
+    it.each(['startAgentflow', 'iterationAgentflow', 'loopAgentflow', 'humanInputAgentflow', 'executeFlowAgentflow'])(
         'returns false for V1.1 deferred node: %s',
         (name) => {
             expect(canStepRun(name, false)).toBe(false)
@@ -38,7 +37,8 @@ describe('canStepRun', () => {
 })
 
 describe('isDeferred', () => {
-    it('flags exactly the four V1.1 node types', () => {
+    it('flags exactly the five V1.1 node types', () => {
+        expect(isDeferred('startAgentflow')).toBe(true)
         expect(isDeferred('iterationAgentflow')).toBe(true)
         expect(isDeferred('loopAgentflow')).toBe(true)
         expect(isDeferred('humanInputAgentflow')).toBe(true)
@@ -49,11 +49,11 @@ describe('isDeferred', () => {
 })
 
 describe('exported sets', () => {
-    it('STEP_RUN_ALLOWED_NODES has exactly 10 entries (V1.0)', () => {
-        expect(STEP_RUN_ALLOWED_NODES.size).toBe(10)
+    it('STEP_RUN_ALLOWED_NODES has exactly 9 entries (V1.0)', () => {
+        expect(STEP_RUN_ALLOWED_NODES.size).toBe(9)
     })
 
-    it('STEP_RUN_DEFERRED_NODES has exactly 4 entries (V1.1)', () => {
-        expect(STEP_RUN_DEFERRED_NODES.size).toBe(4)
+    it('STEP_RUN_DEFERRED_NODES has exactly 5 entries (V1.1)', () => {
+        expect(STEP_RUN_DEFERRED_NODES.size).toBe(5)
     })
 })

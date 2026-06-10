@@ -48,6 +48,7 @@ import { AddWebhookSecretToChatFlow1776240000003 } from './1776240000003-AddWebh
 import { AddMcpServerConfigToChatFlow1767000000000 } from './1767000000000-AddMcpServerConfigToChatFlow'
 import { AddScheduleEntities1772000000000 } from './1772000000000-AddScheduleEntities'
 import { AddAgentflowDebugEntities1777000000000 } from './1777000000000-AddAgentflowDebugEntities'
+import { AddDebugVariableSnapshots1777010000000 } from './1777010000000-AddDebugVariableSnapshots'
 
 import { AddAuthTables1720230151482 } from '../../../enterprise/database/migrations/mariadb/1720230151482-AddAuthTables'
 import { AddWorkspace1725437498242 } from '../../../enterprise/database/migrations/mariadb/1725437498242-AddWorkspace'
@@ -122,5 +123,6 @@ export const mariadbMigrations = [
     AddWebhookSecretToChatFlow1776240000003,
     AddMcpServerConfigToChatFlow1767000000000,
     AddScheduleEntities1772000000000,
-    AddAgentflowDebugEntities1777000000000
+    AddAgentflowDebugEntities1777000000000,
+    AddDebugVariableSnapshots1777010000000
 ]

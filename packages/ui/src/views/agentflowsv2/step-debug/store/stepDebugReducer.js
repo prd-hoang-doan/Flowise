@@ -1,5 +1,12 @@
 import { STEP_DEBUG_ACTIONS as A } from './actions'
-import { INSPECTOR_TABS, DEFAULT_RUN_INPUT } from '../utils/constants'
+import {
+    INSPECTOR_TABS,
+    DEFAULT_RUN_INPUT,
+    DEFAULT_VARIABLE_POOL_HEIGHT_PX,
+    MIN_VARIABLE_POOL_HEIGHT_PX,
+    ABSOLUTE_MAX_VARIABLE_POOL_HEIGHT_PX,
+    LIVE_SNAPSHOT_SENTINEL
+} from '../utils/constants'
 
 export const initialStepDebugState = Object.freeze({
     chatflowId: null,
@@ -22,6 +29,15 @@ export const initialStepDebugState = Object.freeze({
     lastRunByNodeId: {}, // { [nodeId]: IDebugNodeExecution | null }
     debugVarsByScope: {}, // { [nodeIdOrSentinel]: IDebugVariableSummary[] }
     variableValuesById: {}, // { [varId]: { value, sizeBytes, edited, valueType } }
+
+    // Variable Pool panel state.
+    variablePoolOpen: false,
+    variablePoolHeightPx: DEFAULT_VARIABLE_POOL_HEIGHT_PX,
+    snapshots: [], // [{id, runId, nodeId, nodeLabel, status, durationMs, runArgs, createdDate, missingVariableCount, variableCount}]
+    snapshotsLoading: false,
+    snapshotDetailById: {}, // { [snapshotId]: { variables, missingVariables, runArgs, ... } }
+    selectedSnapshotId: LIVE_SNAPSHOT_SENTINEL,
+    poolFilter: '',
 
     toast: null // { severity, message, key }
 })
@@ -126,7 +142,18 @@ export const stepDebugReducer = (state, action) => {
         }
 
         case A.WIPE_VARS:
-            return { ...state, debugVarsByScope: {}, variableValuesById: {}, lastRunByNodeId: {} }
+            // Wipe clears the in-memory caches the user just asked us to forget,
+            // including snapshot detail. The snapshot list itself is rehydrated
+            // by useDebugSnapshots after the backend wipe completes.
+            return {
+                ...state,
+                debugVarsByScope: {},
+                variableValuesById: {},
+                lastRunByNodeId: {},
+                snapshots: [],
+                snapshotDetailById: {},
+                selectedSnapshotId: LIVE_SNAPSHOT_SENTINEL
+            }
 
         case A.SET_RUN_INPUT: {
             if (!action.nodeId) return state
@@ -169,6 +196,39 @@ export const stepDebugReducer = (state, action) => {
             delete next[action.nodeId]
             return { ...state, runInputsByNodeId: next }
         }
+
+        case A.OPEN_VARIABLE_POOL:
+            return { ...state, variablePoolOpen: true }
+        case A.CLOSE_VARIABLE_POOL:
+            return { ...state, variablePoolOpen: false }
+        case A.TOGGLE_VARIABLE_POOL:
+            return { ...state, variablePoolOpen: !state.variablePoolOpen }
+        case A.SET_VARIABLE_POOL_HEIGHT: {
+            const max = Math.min(
+                ABSOLUTE_MAX_VARIABLE_POOL_HEIGHT_PX,
+                typeof window === 'undefined' ? ABSOLUTE_MAX_VARIABLE_POOL_HEIGHT_PX : window.innerHeight - 200
+            )
+            const next = Math.max(MIN_VARIABLE_POOL_HEIGHT_PX, Math.min(max, Number(action.height) || DEFAULT_VARIABLE_POOL_HEIGHT_PX))
+            return { ...state, variablePoolHeightPx: next }
+        }
+        case A.SET_SNAPSHOTS_LOADING:
+            return { ...state, snapshotsLoading: !!action.loading }
+        case A.SET_SNAPSHOTS:
+            return { ...state, snapshots: action.snapshots ?? [], snapshotsLoading: false }
+        case A.MERGE_SNAPSHOT_DETAIL: {
+            if (!action.snapshotId) return state
+            return {
+                ...state,
+                snapshotDetailById: {
+                    ...state.snapshotDetailById,
+                    [action.snapshotId]: action.detail
+                }
+            }
+        }
+        case A.SELECT_SNAPSHOT:
+            return { ...state, selectedSnapshotId: action.snapshotId ?? LIVE_SNAPSHOT_SENTINEL }
+        case A.SET_POOL_FILTER:
+            return { ...state, poolFilter: action.filter ?? '' }
 
         case A.SHOW_TOAST:
             return {

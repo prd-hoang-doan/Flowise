@@ -38,4 +38,9 @@ router.delete('/:id/debug/variables', chatflowsDebugControllers.wipe)
 router.get('/:id/debug/nodes/:nodeId/last-run', chatflowsDebugControllers.getLastRun)
 router.get('/:id/debug/nodes/:nodeId/variables', chatflowsDebugControllers.listForNode)
 
+// Debug Variable Pool snapshots (timeline of post-Step-Run pool states).
+// Read-only; snapshots are created server-side by the StepRunner.
+router.get('/:id/debug/snapshots', chatflowsDebugControllers.listSnapshots)
+router.get('/:id/debug/snapshots/:snapshotId', chatflowsDebugControllers.getSnapshot)
+
 export default router

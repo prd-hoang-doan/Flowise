@@ -11,7 +11,6 @@
  */
 
 const ALLOWED = new Set([
-    'startAgentflow',
     'llmAgentflow',
     'agentAgentflow',
     'toolAgentflow',
@@ -23,7 +22,7 @@ const ALLOWED = new Set([
     'directReplyAgentflow'
 ])
 
-const DEFERRED = new Set(['iterationAgentflow', 'loopAgentflow', 'humanInputAgentflow', 'executeFlowAgentflow'])
+const DEFERRED = new Set(['startAgentflow', 'iterationAgentflow', 'loopAgentflow', 'humanInputAgentflow', 'executeFlowAgentflow'])
 
 export const canStepRun = (nodeName, isChildNode = false) => {
     if (isChildNode) return false

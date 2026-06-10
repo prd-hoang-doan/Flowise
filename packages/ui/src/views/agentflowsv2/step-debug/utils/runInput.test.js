@@ -90,32 +90,20 @@ describe('compileRunInputBody', () => {
         })
 
         it('folds $webhook.* JSON-typed values via JSON.parse, falls back to raw string', () => {
-            const out = compileRunInputBody(
-                { structured: { '$webhook.headers': '{"x":"y"}' } },
-                meta
-            )
+            const out = compileRunInputBody({ structured: { '$webhook.headers': '{"x":"y"}' } }, meta)
             expect(out.body.webhook).toEqual({ headers: { x: 'y' } })
 
-            const fallback = compileRunInputBody(
-                { structured: { '$webhook.headers': 'not json' } },
-                meta
-            )
+            const fallback = compileRunInputBody({ structured: { '$webhook.headers': 'not json' } }, meta)
             expect(fallback.body.webhook).toEqual({ headers: 'not json' })
         })
 
         it('folds $flow.state.* into body.inputs', () => {
-            const out = compileRunInputBody(
-                { structured: { '$flow.state.mode': 'pro' } },
-                meta
-            )
+            const out = compileRunInputBody({ structured: { '$flow.state.mode': 'pro' } }, meta)
             expect(out.body.inputs).toEqual({ mode: 'pro' })
         })
 
         it('stashes node outputs under inputs.__nodeOutputs[ref]', () => {
-            const out = compileRunInputBody(
-                { structured: { tool_1: '{"answer":42}' } },
-                meta
-            )
+            const out = compileRunInputBody({ structured: { tool_1: '{"answer":42}' } }, meta)
             expect(out.body.inputs.__nodeOutputs).toEqual({ tool_1: { answer: 42 } })
         })
 
@@ -131,10 +119,7 @@ describe('compileRunInputBody', () => {
         })
 
         it('drops empty / cleared structured values', () => {
-            const out = compileRunInputBody(
-                { structured: { '$form.topic': '', '$form.limit': '   ' } },
-                meta
-            )
+            const out = compileRunInputBody({ structured: { '$form.topic': '', '$form.limit': '   ' } }, meta)
             expect(out.body).toEqual({})
         })
 

@@ -2,6 +2,7 @@ import { StatusCodes } from 'http-status-codes'
 import { Equal, In, LessThan } from 'typeorm'
 import { DebugVariable } from '../../database/entities/DebugVariable'
 import { DebugNodeExecution } from '../../database/entities/DebugNodeExecution'
+import debugVariableSnapshotService from './debugVariableSnapshotService'
 import { InternalFlowiseError } from '../../errors/internalFlowiseError'
 import { getErrorMessage } from '../../errors/utils'
 import { DEBUG_NODE_SENTINELS, DebugVariableScope, IDebugVariable, IDebugVariableSummary } from '../../Interface'
@@ -244,6 +245,15 @@ const wipe = async (scope: DebugVariableScopeArgs): Promise<{ deletedCount: numb
             workspaceId: Equal(scope.workspaceId) as any,
             userId: Equal(scope.userId) as any
         })
+        // Snapshots reference the same (chatflow, workspace, user) tuple, so a
+        // wipe must clear them too — otherwise the Variable Pool panel would
+        // still display historical entries the user just asked us to forget.
+        // Best-effort: a failure here should not block the primary wipe.
+        try {
+            await debugVariableSnapshotService.wipe(scope)
+        } catch {
+            /* ignore — snapshot wipe is auxiliary */
+        }
         return { deletedCount: result.affected ?? 0 }
     } catch (err) {
         throw new InternalFlowiseError(StatusCodes.INTERNAL_SERVER_ERROR, `Error: debugVariableService.wipe - ${getErrorMessage(err)}`)

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
+import PropTypes from 'prop-types'
 
 import { useTheme } from '@mui/material/styles'
 import { Drawer, Box } from '@mui/material'
@@ -38,6 +39,11 @@ const Inspector = ({ resolveNodeLabel }) => {
     const widthPx = ctx?.state?.inspectorWidthPx ?? 560
     const selectedNodeId = ctx?.state?.selectedNodeId ?? null
     const chatflowId = ctx?.chatflowId
+    // Coexistence with the Variable Pool panel (bottom-anchored): shrink the
+    // Inspector's vertical extent so neither covers the other.
+    const variablePoolOpen = ctx?.state?.variablePoolOpen ?? false
+    const variablePoolHeightPx = ctx?.state?.variablePoolHeightPx ?? 0
+    const inspectorHeight = variablePoolOpen ? `calc(100vh - 70px - ${variablePoolHeightPx}px)` : 'calc(100vh - 70px)'
 
     const { run, isRunning } = useStepRun(selectedNodeId ?? '__noop__')
 
@@ -123,7 +129,7 @@ const Inspector = ({ resolveNodeLabel }) => {
                 sx: {
                     width: widthPx,
                     top: 70, // canvas AppBar height
-                    height: 'calc(100vh - 70px)',
+                    height: inspectorHeight,
                     borderLeft: `1px solid ${theme.palette.divider}`,
                     overflow: 'hidden',
                     display: 'flex',
@@ -170,6 +176,10 @@ const Inspector = ({ resolveNodeLabel }) => {
             </Box>
         </Drawer>
     )
+}
+
+Inspector.propTypes = {
+    resolveNodeLabel: PropTypes.func
 }
 
 export default Inspector

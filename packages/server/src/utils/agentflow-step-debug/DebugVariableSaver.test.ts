@@ -31,11 +31,7 @@ const makeFakeRepo = (entityClass: any) => {
         rows,
         findOne: jest.fn(async ({ where }) => {
             const unwrap = (v: any) => (v && typeof v === 'object' && '__equalsMarker' in v ? v.value : v)
-            return (
-                rows.find((r) =>
-                    Object.entries(where).every(([k, v]) => r[k] === unwrap(v))
-                ) ?? null
-            )
+            return rows.find((r) => Object.entries(where).every(([k, v]) => r[k] === unwrap(v))) ?? null
         }),
         save: jest.fn(async (row: Row) => {
             const found = rows.find((r) => r === row)
@@ -130,7 +126,11 @@ describe('DebugVariableSaver', () => {
                 }
             } as any
         })
-        const byNode = (id: string) => debugVarRepo.rows.filter((r) => r.nodeId === id).map((r) => r.name).sort()
+        const byNode = (id: string) =>
+            debugVarRepo.rows
+                .filter((r) => r.nodeId === id)
+                .map((r) => r.name)
+                .sort()
         expect(byNode(DEBUG_NODE_SENTINELS.FORM)).toEqual(['email'])
         expect(byNode(DEBUG_NODE_SENTINELS.WEBHOOK)).toEqual(['headers'])
         expect(byNode(DEBUG_NODE_SENTINELS.SYSTEM)).toEqual(['question'])

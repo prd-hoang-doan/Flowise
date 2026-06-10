@@ -1,17 +1,7 @@
 import { useState } from 'react'
 import PropTypes from 'prop-types'
 
-import {
-    Box,
-    Stack,
-    Typography,
-    Chip,
-    IconButton,
-    Tooltip,
-    TextField,
-    Button,
-    Collapse
-} from '@mui/material'
+import { Box, Stack, Typography, Chip, IconButton, Tooltip, TextField, Button, Collapse } from '@mui/material'
 import { IconCopy, IconRotateClockwise, IconTrash, IconPencil, IconCheck, IconX } from '@tabler/icons-react'
 
 import ValueCell from './ValueCell'
@@ -31,15 +21,7 @@ import { DEBUG_VAR_INLINE_MAX_BYTES } from '../../../utils/constants'
  * cached value passed in via `value` and triggers `onRequestValue` lazily
  * when the user expands or edits a row whose value hasn't been fetched yet.
  */
-const VariableRow = ({
-    summary,
-    value,
-    onRequestValue,
-    onUpdate,
-    onReset,
-    onDelete,
-    editable = true
-}) => {
+const VariableRow = ({ summary, value, onRequestValue, onUpdate, onReset, onDelete, editable = true }) => {
     const [editing, setEditing] = useState(false)
     const [draft, setDraft] = useState('')
     const [busy, setBusy] = useState(false)
@@ -157,12 +139,7 @@ const VariableRow = ({
             </Stack>
 
             <Box sx={{ mt: 0.75 }}>
-                <ValueCell
-                    value={value}
-                    valueType={summary.valueType}
-                    isTruncated={summary.isTruncated}
-                    sizeBytes={summary.sizeBytes}
-                />
+                <ValueCell value={value} valueType={summary.valueType} isTruncated={summary.isTruncated} sizeBytes={summary.sizeBytes} />
             </Box>
 
             <Collapse in={editing} unmountOnExit>
@@ -181,13 +158,7 @@ const VariableRow = ({
                         <Button size='small' onClick={cancelEdit} startIcon={<IconX size={14} />} disabled={busy}>
                             Cancel
                         </Button>
-                        <Button
-                            size='small'
-                            variant='contained'
-                            onClick={commitEdit}
-                            startIcon={<IconCheck size={14} />}
-                            disabled={busy}
-                        >
+                        <Button size='small' variant='contained' onClick={commitEdit} startIcon={<IconCheck size={14} />} disabled={busy}>
                             Save
                         </Button>
                     </Stack>

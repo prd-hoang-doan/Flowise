@@ -28,6 +28,7 @@ import { DebugVariablePool } from './DebugVariablePool'
 import { DebugVariableSaver, DebugVariableTooLargeError } from './DebugVariableSaver'
 import { DEBUG_VAR_INLINE_MAX_BYTES, STEP_RUN_ALLOWED_NODES, STEP_RUN_DEFERRED_NODES } from './constants'
 import { acquireStepRunSlot, releaseStepRunSlot } from './concurrency'
+import debugVariableSnapshotService from '../../services/chatflows-debug/debugVariableSnapshotService'
 
 export interface StepRunnerDeps {
     appDataSource: DataSource
@@ -45,11 +46,7 @@ export interface StepRunnerCtor extends StepRunnerDeps {
 
 export class StepRunUnsupportedNodeError extends Error {
     constructor(public readonly nodeName: string, public readonly deferred: boolean) {
-        super(
-            deferred
-                ? `Step Run for node type '${nodeName}' is coming in V1.1`
-                : `Step Run for node type '${nodeName}' is not supported`
-        )
+        super(deferred ? `Step Run for node type '${nodeName}' is coming in V1.1` : `Step Run for node type '${nodeName}' is not supported`)
         this.name = 'StepRunUnsupportedNodeError'
     }
 }
@@ -280,6 +277,36 @@ export class StepRunner {
                 })
             }
 
+            // Capture a Debug Variable Pool snapshot after the saver flushed
+            // its rows. STOPPED runs leave the pool unchanged so they don't
+            // produce a snapshot — there's no new state worth recording.
+            // Snapshot failures are NEVER allowed to break a Step Run; the
+            // pool panel is read-only telemetry.
+            if (status === 'FINISHED' || status === 'ERROR') {
+                try {
+                    await debugVariableSnapshotService.captureFromCurrentState({
+                        appDataSource,
+                        chatflowId,
+                        workspaceId,
+                        userId,
+                        runId: uuidv4(),
+                        nodeId,
+                        nodeLabel: reactFlowNode.data.label,
+                        status,
+                        durationMs,
+                        nodes,
+                        edges,
+                        args: {
+                            question: this.args.question,
+                            sessionId: this.args.sessionId,
+                            inputs: this.args.inputs
+                        }
+                    })
+                } catch (snapshotErr) {
+                    logger.warn(`[StepRunner]: snapshot capture failed for ${nodeId}: ${getErrorMessage(snapshotErr)}`)
+                }
+            }
+
             telemetry.sendTelemetry('agentflow_debug_step_run_finish', {
                 chatflowId,
                 nodeId,
@@ -320,10 +347,7 @@ export class StepRunner {
         }
     }
 
-    private async summariseCapturedVariables(
-        reactFlowNode: IReactFlowNode,
-        nodeData: any
-    ): Promise<IDebugVariableSummary[]> {
+    private async summariseCapturedVariables(reactFlowNode: IReactFlowNode, nodeData: any): Promise<IDebugVariableSummary[]> {
         // Best-effort summarisation directly from the in-memory result rather
         // than re-querying the DB. Keeps the response shape stable with the
         // GET /debug/variables list endpoint.
@@ -335,16 +359,15 @@ export class StepRunner {
                 scope,
                 nodeId,
                 name,
-                valueType:
-                    Array.isArray(value)
-                        ? 'array'
-                        : typeof value === 'string'
-                        ? 'string'
-                        : typeof value === 'number'
-                        ? 'number'
-                        : typeof value === 'boolean'
-                        ? 'boolean'
-                        : 'json',
+                valueType: Array.isArray(value)
+                    ? 'array'
+                    : typeof value === 'string'
+                    ? 'string'
+                    : typeof value === 'number'
+                    ? 'number'
+                    : typeof value === 'boolean'
+                    ? 'boolean'
+                    : 'json',
                 edited: false,
                 visible: true,
                 sizeBytes: size,

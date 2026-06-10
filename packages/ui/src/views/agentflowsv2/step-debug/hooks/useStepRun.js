@@ -3,6 +3,7 @@ import { useCallback } from 'react'
 import { useStepDebug } from '../store/StepDebugContext'
 import { useStepRunStream } from './useStepRunStream'
 import { useDebugVariables } from './useDebugVariables'
+import { useDebugSnapshots } from './useDebugSnapshots'
 import { STEP_DEBUG_ACTIONS as A } from '../store/actions'
 import { INSPECTOR_TABS } from '../utils/constants'
 import { canStepRun, isDeferred } from '../utils/canStepRun'
@@ -26,6 +27,7 @@ export const useStepRun = (nodeId, { nodeName, isChildNode = false } = {}) => {
     const ctx = useStepDebug()
     const stream = useStepRunStream()
     const debugVars = useDebugVariables()
+    const snapshots = useDebugSnapshots()
 
     const dispatch = ctx?.dispatch
     const chatflowId = ctx?.chatflowId
@@ -101,6 +103,13 @@ export const useStepRun = (nodeId, { nodeName, isChildNode = false } = {}) => {
                 // Flow State + Globals tabs would never populate.
                 await debugVars.refreshAll()
                 await debugVars.fetchLastRun(nodeId)
+                // Refresh the snapshot timeline so the Variable Pool panel
+                // picks up the row the StepRunner just captured. Best-effort:
+                // the hook tolerates an absent provider and snapshots are
+                // purely informational, never gating.
+                if (snapshots?.enabled) {
+                    snapshots.list()
+                }
             } catch (err) {
                 const kind = err?.kind ?? 'unknown'
                 if (kind === 'missing_vars') {
@@ -122,7 +131,7 @@ export const useStepRun = (nodeId, { nodeName, isChildNode = false } = {}) => {
                 dispatch({ type: A.FINISH_RUN, nodeId })
             }
         },
-        [ctx, dispatch, chatflowId, nodeId, nodeName, isChildNode, isRunning, stream, debugVars]
+        [ctx, dispatch, chatflowId, nodeId, nodeName, isChildNode, isRunning, stream, debugVars, snapshots]
     )
 
     const abort = useCallback(() => {

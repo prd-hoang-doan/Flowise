@@ -31,6 +31,7 @@ import { ScheduleRecord } from './ScheduleRecord'
 import { ScheduleTriggerLog } from './ScheduleTriggerLog'
 import { DebugVariable } from './DebugVariable'
 import { DebugNodeExecution } from './DebugNodeExecution'
+import { DebugVariableSnapshot } from './DebugVariableSnapshot'
 
 export const entities = {
     ChatFlow,
@@ -67,5 +68,6 @@ export const entities = {
     ScheduleRecord,
     ScheduleTriggerLog,
     DebugVariable,
-    DebugNodeExecution
+    DebugNodeExecution,
+    DebugVariableSnapshot
 }

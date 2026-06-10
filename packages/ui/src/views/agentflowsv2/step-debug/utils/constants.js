@@ -76,3 +76,19 @@ export const SENTINEL_TO_TAB = Object.freeze({
     [DEBUG_NODE_SENTINELS.SYSTEM]: INSPECTOR_TABS.GLOBALS,
     [DEBUG_NODE_SENTINELS.CHAT_HISTORY]: INSPECTOR_TABS.GLOBALS
 })
+
+/**
+ * Variable Pool panel: bottom-anchored drawer that visualises the whole
+ * Debug Variable Pool with a Redux-DevTools-style snapshot timeline.
+ */
+export const DEFAULT_VARIABLE_POOL_HEIGHT_PX = 320
+export const MIN_VARIABLE_POOL_HEIGHT_PX = 200
+// Upper bound is computed at drag time against `window.innerHeight` — exposed
+// here for tests / persistence guard rails.
+export const ABSOLUTE_MAX_VARIABLE_POOL_HEIGHT_PX = 1200
+
+/**
+ * Pseudo-snapshot id used by the Variable Pool to render the current
+ * (live) `debugVarsByScope` cache instead of a historical row.
+ */
+export const LIVE_SNAPSHOT_SENTINEL = '__live__'

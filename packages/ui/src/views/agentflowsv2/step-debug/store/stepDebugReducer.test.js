@@ -271,4 +271,68 @@ describe('stepDebugReducer', () => {
         const next = stepDebugReducer(seeded, { type: A.RESET, chatflowId: 'new-cf' })
         expect(next).toEqual({ ...initialStepDebugState, chatflowId: 'new-cf' })
     })
+
+    describe('Variable Pool panel actions', () => {
+        it('OPEN / CLOSE / TOGGLE_VARIABLE_POOL flip variablePoolOpen', () => {
+            const opened = stepDebugReducer(fresh(), { type: A.OPEN_VARIABLE_POOL })
+            expect(opened.variablePoolOpen).toBe(true)
+            const closed = stepDebugReducer(opened, { type: A.CLOSE_VARIABLE_POOL })
+            expect(closed.variablePoolOpen).toBe(false)
+            const toggled = stepDebugReducer(closed, { type: A.TOGGLE_VARIABLE_POOL })
+            expect(toggled.variablePoolOpen).toBe(true)
+        })
+
+        it('SET_VARIABLE_POOL_HEIGHT clamps to [MIN, viewport-200]', () => {
+            const tooSmall = stepDebugReducer(fresh(), { type: A.SET_VARIABLE_POOL_HEIGHT, height: 50 })
+            expect(tooSmall.variablePoolHeightPx).toBe(200)
+            // In a node-only test env `window` is undefined; the reducer falls
+            // back to ABSOLUTE_MAX_VARIABLE_POOL_HEIGHT_PX (1200) for the upper bound.
+            const tooBig = stepDebugReducer(fresh(), { type: A.SET_VARIABLE_POOL_HEIGHT, height: 99999 })
+            expect(tooBig.variablePoolHeightPx).toBeLessThanOrEqual(1200)
+            const inRange = stepDebugReducer(fresh(), { type: A.SET_VARIABLE_POOL_HEIGHT, height: 300 })
+            expect(inRange.variablePoolHeightPx).toBe(300)
+        })
+
+        it('SET_SNAPSHOTS clears the loading flag and replaces the list', () => {
+            const loading = stepDebugReducer(fresh(), { type: A.SET_SNAPSHOTS_LOADING, loading: true })
+            expect(loading.snapshotsLoading).toBe(true)
+            const loaded = stepDebugReducer(loading, { type: A.SET_SNAPSHOTS, snapshots: [{ id: 's1' }] })
+            expect(loaded.snapshots).toEqual([{ id: 's1' }])
+            expect(loaded.snapshotsLoading).toBe(false)
+        })
+
+        it('MERGE_SNAPSHOT_DETAIL stores detail by id', () => {
+            const next = stepDebugReducer(fresh(), {
+                type: A.MERGE_SNAPSHOT_DETAIL,
+                snapshotId: 's1',
+                detail: { variables: { n: [{ name: 'a' }] } }
+            })
+            expect(next.snapshotDetailById.s1).toEqual({ variables: { n: [{ name: 'a' }] } })
+        })
+
+        it('SELECT_SNAPSHOT defaults to LIVE sentinel when no id provided', () => {
+            const selected = stepDebugReducer(fresh(), { type: A.SELECT_SNAPSHOT, snapshotId: 's1' })
+            expect(selected.selectedSnapshotId).toBe('s1')
+            const reset = stepDebugReducer(selected, { type: A.SELECT_SNAPSHOT })
+            expect(reset.selectedSnapshotId).toBe('__live__')
+        })
+
+        it('SET_POOL_FILTER stores the search text', () => {
+            const next = stepDebugReducer(fresh(), { type: A.SET_POOL_FILTER, filter: 'mode' })
+            expect(next.poolFilter).toBe('mode')
+        })
+
+        it('WIPE_VARS also drops snapshots + detail and resets selection to LIVE', () => {
+            const seeded = {
+                ...fresh(),
+                snapshots: [{ id: 's1' }],
+                snapshotDetailById: { s1: { variables: {} } },
+                selectedSnapshotId: 's1'
+            }
+            const next = stepDebugReducer(seeded, { type: A.WIPE_VARS })
+            expect(next.snapshots).toEqual([])
+            expect(next.snapshotDetailById).toEqual({})
+            expect(next.selectedSnapshotId).toBe('__live__')
+        })
+    })
 })
